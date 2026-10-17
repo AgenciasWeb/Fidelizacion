@@ -184,7 +184,7 @@ async function stampTab() {
 }
 
 let inst = null;
-addEventListener('beforeinstallprompt', e => { e.preventDefault(); inst = e; });
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); inst = e; const c = document.getElementById('inst'); if (c) c.innerHTML = installHtml(); });
 function installApp() { if (inst) inst.prompt(); }
 function setManifest(name = biz.name, color = biz.color, start = location.href) {
   try {
@@ -196,8 +196,12 @@ function setManifest(name = biz.name, color = biz.color, start = location.href) 
     l.href = URL.createObjectURL(new Blob([JSON.stringify(mf)], { type: 'application/manifest+json' })); document.head.appendChild(l);
   } catch {}
 }
+function installHtml(wallet) {
+  return inst ? '<button onclick="installApp()" style="margin-top:0">Agregar a mi celular</button>'
+    : `<p class="mute" style="text-align:center;margin:0">${wallet ? 'Para tenerla a mano: en el menú del navegador tocá “Agregar a pantalla de inicio”. Se instala como “Mis tarjetas”.' : 'Para instalar la app, tocá “Ver todas mis tarjetas” y agregala a la pantalla de inicio desde ahí.'}</p>`;
+}
 function links() {
-  return `<div class="card">${inst ? '<button onclick="installApp()" style="margin-top:0">Agregar a mi celular</button>' : '<p class="mute" style="text-align:center;margin:0">Para tenerla a mano: en el menú del navegador tocá “Agregar a pantalla de inicio”.</p>'}${savedCards().length > 1 ? '<a class="btn alt" style="display:block;margin-top:12px" href="?mis-tarjetas">Ver todas mis tarjetas</a>' : ''}</div>`;
+  return `<div class="card">${installHtml(false)}<a class="btn alt" style="display:block;margin-top:12px" href="?mis-tarjetas">Ver todas mis tarjetas</a></div>`;
 }
 
 async function statsTab() {
@@ -248,6 +252,7 @@ async function walletView() {
   w.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
     if (confirm('¿Quitar esta tarjeta de este celular? No perdés tus sellos: podés recuperarla con tu teléfono.')) { localStorage.removeItem('code_' + b.dataset.rm); walletView(); }
   });
+  w.insertAdjacentHTML('beforeend', '<div class="card" id="inst">' + installHtml(true) + '</div>');
 }
 
 async function listTab() {
@@ -288,7 +293,9 @@ function cfgTab() {
   try {
     biz = await rpc('get_business', { p_slug: slug });
     if (!biz) { $app.innerHTML = '<div class="msg err">Negocio no encontrado</div>'; return; }
-    setColor(biz.color); document.title = biz.name; setManifest();
+    setColor(biz.color);
+    if (isPanel) { document.title = biz.name; setManifest('Panel ' + biz.name, biz.color, location.href); }
+    else { document.title = 'Mis tarjetas'; setManifest('Mis tarjetas', '#c2410c', location.origin + location.pathname + '?mis-tarjetas'); }
     if (!isPanel) return customerView();
     if (pin) { try { const b = await rpc('biz_login', { p_slug: slug, p_pin: pin }); biz = { ...biz, ...b }; return panel('stamp'); } catch {} }
     loginView();
