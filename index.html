@@ -45,6 +45,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ac);outline-off
 .stat{border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center}.stat b{display:block;font-size:26px}
 a.btn{display:inline-block;text-align:center;text-decoration:none;padding:13px 16px;border-radius:10px;background:var(--ac);color:#fff;font-weight:700}
 a.btn.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}a.btn.sm{padding:8px 12px;font-size:14px}
+.wcard{display:block;text-decoration:none;color:#fff;border-radius:14px;padding:18px}
+.wcard b{display:block;font-size:20px}.wcard span{display:block;font-size:30px;font-weight:700;margin:6px 0}.wcard small{opacity:.92}
+.wrm{text-align:right;margin:6px 0 16px}
 video{width:100%;border-radius:10px;margin-top:10px;background:#000}
 </style>
 </head>
@@ -183,18 +186,18 @@ async function stampTab() {
 let inst = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); inst = e; });
 function installApp() { if (inst) inst.prompt(); }
-function setManifest() {
+function setManifest(name = biz.name, color = biz.color, start = location.href) {
   try {
-    const col = /^#[0-9a-f]{6}$/i.test(biz.color) ? biz.color : '#c2410c';
+    const col = /^#[0-9a-f]{6}$/i.test(color) ? color : '#c2410c';
     const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='96' fill='${col}'/><text x='256' y='350' font-size='300' text-anchor='middle' fill='white'>✓</text></svg>`;
-    const mf = { name: biz.name, short_name: biz.name.slice(0, 12), start_url: location.href, display: 'standalone', background_color: col, theme_color: col,
+    const mf = { name, short_name: name.slice(0, 12), start_url: start, display: 'standalone', background_color: col, theme_color: col,
       icons: [{ src: 'data:image/svg+xml,' + encodeURIComponent(svg), sizes: 'any', type: 'image/svg+xml' }] };
     const l = document.createElement('link'); l.rel = 'manifest';
     l.href = URL.createObjectURL(new Blob([JSON.stringify(mf)], { type: 'application/manifest+json' })); document.head.appendChild(l);
   } catch {}
 }
 function links() {
-  return `<div class="card">${inst ? '<button onclick="installApp()" style="margin-top:0">Agregar a mi celular</button>' : '<p class="mute" style="text-align:center;margin:0">Para tenerla a mano: en el menú del navegador tocá “Agregar a pantalla de inicio”.</p>'}</div>`;
+  return `<div class="card">${inst ? '<button onclick="installApp()" style="margin-top:0">Agregar a mi celular</button>' : '<p class="mute" style="text-align:center;margin:0">Para tenerla a mano: en el menú del navegador tocá “Agregar a pantalla de inicio”.</p>'}${savedCards().length > 1 ? '<a class="btn alt" style="display:block;margin-top:12px" href="?mis-tarjetas">Ver todas mis tarjetas</a>' : ''}</div>`;
 }
 
 async function statsTab() {
@@ -215,6 +218,36 @@ async function statsTab() {
     <div class="card"><h2>Mejores clientes</h2>${top.length ? top.map(c => `<div class="row"><b>${esc(c.name)}</b><span>${c.visits} visitas</span></div>`).join('') : '<p class="mute">Todavía no hay datos.</p>'}</div>
     <div class="card"><h2>Hace más de 30 días que no vienen</h2>${old.length ? old.map(c => `<div class="row"><div><b>${esc(c.name)}</b><div class="mute">${c.stamps}/${biz.stamps_needed} sellos</div></div><a class="btn sm" target="_blank" rel="noopener" href="${wa(c)}">WhatsApp</a></div>`).join('') : '<p class="mute">Nadie por ahora. Buena señal.</p>'}</div>`;
   } catch (e) { v.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+}
+
+const savedCards = () => {
+  try { return Object.keys(localStorage).filter(k => k.startsWith('code_')).map(k => [k.slice(5), localStorage.getItem(k)]); } catch { return []; }
+};
+async function walletView() {
+  setManifest('Mis tarjetas', '#c2410c', location.origin + location.pathname + '?mis-tarjetas');
+  document.title = 'Mis tarjetas';
+  $app.innerHTML = '<h1>Mis tarjetas</h1><p class="mute">Todas tus tarjetas de sellos en un solo lugar.</p><div id="w"></div>';
+  const w = document.getElementById('w'), list = savedCards();
+  if (!list.length) { w.innerHTML = '<div class="card"><p class="mute" style="margin:0">Todavía no tenés tarjetas en este celular. Acercá el celular a la tarjeta NFC de un negocio y creá la tuya.</p></div>'; return; }
+  w.innerHTML = '<p class="mute">Cargando…</p>';
+  const rows = await Promise.all(list.map(async ([sl, code]) => {
+    try {
+      const [b, c] = await Promise.all([rpc('get_business', { p_slug: sl }), rpc('get_card', { p_slug: sl, p_code: code })]);
+      return b && c ? { sl, b, c } : { sl, gone: true };
+    } catch { return { sl, err: true }; }
+  }));
+  w.innerHTML = rows.map(r => {
+    let card;
+    if (r.gone || r.err) card = `<div class="card" style="margin:0"><b>${esc(r.sl)}</b><p class="mute" style="margin:6px 0 0">${r.gone ? 'Esta tarjeta ya no existe.' : 'No se pudo cargar. Revisá tu conexión.'}</p></div>`;
+    else {
+      const col = /^#[0-9a-f]{6}$/i.test(r.b.color) ? r.b.color : '#c2410c', left = r.b.stamps_needed - r.c.stamps;
+      card = `<a class="wcard" href="?b=${encodeURIComponent(r.sl)}" style="background:${col}"><b>${esc(r.b.name)}</b><span>${r.c.stamps} de ${r.b.stamps_needed} sellos</span><small>${left <= 0 ? '¡Premio listo! ' : 'Te faltan ' + left + ' · '}${esc(r.b.reward)}</small></a>`;
+    }
+    return card + `<div class="wrm"><button class="alt sm" data-rm="${esc(r.sl)}">Quitar de este celular</button></div>`;
+  }).join('');
+  w.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
+    if (confirm('¿Quitar esta tarjeta de este celular? No perdés tus sellos: podés recuperarla con tu teléfono.')) { localStorage.removeItem('code_' + b.dataset.rm); walletView(); }
+  });
 }
 
 async function listTab() {
@@ -250,6 +283,7 @@ function cfgTab() {
 
 /* ---------------- ARRANQUE ---------------- */
 (async () => {
+  if (qs.has('mis-tarjetas') || (!slug && savedCards().length)) return walletView();
   if (!slug) { $app.innerHTML = '<h1>Tarjeta de sellos</h1><p class="mute">Falta el negocio en el link. Usá: ?b=nombre-del-negocio</p>'; return; }
   try {
     biz = await rpc('get_business', { p_slug: slug });
