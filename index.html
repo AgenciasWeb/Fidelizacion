@@ -2,8 +2,9 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'unsafe-inline'; connect-src https://bnyfhoxrezvotfktrxmb.supabase.co; img-src data: blob:; manifest-src blob: data:; media-src blob: mediastream:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'unsafe-inline'; connect-src https://bnyfhoxrezvotfktrxmb.supabase.co; img-src 'self' data:; manifest-src 'self'; worker-src 'self'; media-src blob: mediastream:; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
+<link rel="manifest" href="manifest.json">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tarjeta de sellos</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
@@ -61,8 +62,9 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 const $app = document.getElementById('app');
 const qs = new URLSearchParams(location.search);
-const slug = (qs.get('b') || '').toLowerCase();
 const isPanel = qs.has('panel');
+let _s = ''; try { _s = localStorage.getItem('panel_slug') || ''; } catch {}
+const slug = (qs.get('b') || (isPanel ? _s : '')).toLowerCase();
 let biz = null, pin = sessionStorage.getItem('pin_' + slug) || '', stream = null, poll = null;
 
 async function rpc(fn, args) {
@@ -186,15 +188,10 @@ async function stampTab() {
 let inst = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); inst = e; const c = document.getElementById('inst'); if (c) c.innerHTML = installHtml(); });
 function installApp() { if (inst) inst.prompt(); }
-function setManifest(name = biz.name, color = biz.color, start = location.href) {
-  try {
-    const col = /^#[0-9a-f]{6}$/i.test(color) ? color : '#c2410c';
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='96' fill='${col}'/><text x='256' y='350' font-size='300' text-anchor='middle' fill='white'>✓</text></svg>`;
-    const mf = { name, short_name: name.slice(0, 12), start_url: start, display: 'standalone', background_color: col, theme_color: col,
-      icons: [{ src: 'data:image/svg+xml,' + encodeURIComponent(svg), sizes: 'any', type: 'image/svg+xml' }] };
-    const l = document.createElement('link'); l.rel = 'manifest';
-    l.href = URL.createObjectURL(new Blob([JSON.stringify(mf)], { type: 'application/manifest+json' })); document.head.appendChild(l);
-  } catch {}
+function setManifest(kind) {
+  let l = document.querySelector('link[rel=manifest]');
+  if (!l) { l = document.createElement('link'); l.rel = 'manifest'; document.head.appendChild(l); }
+  l.href = kind === 'panel' ? 'manifest-panel.json' : 'manifest.json';
 }
 function installHtml(wallet) {
   return inst ? '<button onclick="installApp()" style="margin-top:0">Agregar a mi celular</button>'
@@ -228,7 +225,7 @@ const savedCards = () => {
   try { return Object.keys(localStorage).filter(k => k.startsWith('code_')).map(k => [k.slice(5), localStorage.getItem(k)]); } catch { return []; }
 };
 async function walletView() {
-  setManifest('Mis tarjetas', '#c2410c', location.origin + location.pathname + '?mis-tarjetas');
+  setManifest('wallet');
   document.title = 'Mis tarjetas';
   $app.innerHTML = '<h1>Mis tarjetas</h1><p class="mute">Todas tus tarjetas de sellos en un solo lugar.</p><div id="w"></div>';
   const w = document.getElementById('w'), list = savedCards();
@@ -287,15 +284,22 @@ function cfgTab() {
 }
 
 /* ---------------- ARRANQUE ---------------- */
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 (async () => {
+  if (isPanel && !slug) {
+    setManifest('panel'); document.title = 'Panel de sellos';
+    $app.innerHTML = '<h1>Panel de sellos</h1><div class="card"><label for="sg">Código de tu negocio</label><input id="sg" autocapitalize="none" placeholder="ej: micafe"><button id="go">Continuar</button><div id="m"></div></div>';
+    go.onclick = () => { const v = sg.value.trim().toLowerCase(); if (/^[a-z0-9-]{2,40}$/.test(v)) location.href = '?b=' + v + '&panel=1'; else flash(m, 'Código inválido', false); };
+    return;
+  }
   if (qs.has('mis-tarjetas') || (!slug && savedCards().length)) return walletView();
   if (!slug) { $app.innerHTML = '<h1>Tarjeta de sellos</h1><p class="mute">Falta el negocio en el link. Usá: ?b=nombre-del-negocio</p>'; return; }
   try {
     biz = await rpc('get_business', { p_slug: slug });
     if (!biz) { $app.innerHTML = '<div class="msg err">Negocio no encontrado</div>'; return; }
     setColor(biz.color);
-    if (isPanel) { document.title = biz.name; setManifest('Panel ' + biz.name, biz.color, location.href); }
-    else { document.title = 'Mis tarjetas'; setManifest('Mis tarjetas', '#c2410c', location.origin + location.pathname + '?mis-tarjetas'); }
+    if (isPanel) { document.title = biz.name; setManifest('panel'); try { localStorage.setItem('panel_slug', slug); } catch {} }
+    else { document.title = 'Mis tarjetas'; setManifest('wallet'); }
     if (!isPanel) return customerView();
     if (pin) { try { const b = await rpc('biz_login', { p_slug: slug, p_pin: pin }); biz = { ...biz, ...b }; return panel('stamp'); } catch {} }
     loginView();
