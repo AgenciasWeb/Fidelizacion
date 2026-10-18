@@ -115,8 +115,8 @@ async function customerView() {
     try {
       const c = await rpc('get_card', { p_slug: slug, p_code: saved });
       if (!c) { localStorage.removeItem('code_' + slug); return customerView(); }
-      const done = c.stamps >= biz.stamps_needed, left = biz.stamps_needed - c.stamps;
-      $app.innerHTML = `<h1>${esc(biz.name)}</h1><p class="mute">Hola, ${esc(c.name)}</p>${biz.notice ? '<div class="card notice">' + esc(biz.notice) + '</div>' : ''}
+      const done = c.stamps >= biz.stamps_needed, left = biz.stamps_needed - c.stamps, bdToday = c.birthday && c.birthday === new Date().toLocaleDateString('en-CA').slice(5);
+      $app.innerHTML = `<h1>${esc(biz.name)}</h1><p class="mute">Hola, ${esc(c.name)}</p>${biz.notice ? '<div class="card notice">' + esc(biz.notice) + '</div>' : ''}${bdToday ? '<div class="card notice">🎂 ¡Feliz cumpleaños, ' + esc(c.name.split(' ')[0]) + '!' + (biz.birthday_stamp ? ' Pasá hoy por el local y te regalamos 1 sello extra.' : '') + '</div>' : ''}
       <div class="card">${stampsGrid(biz.stamps_needed, c.stamps, biz.stamp_emoji)}
       <p style="text-align:center;margin:0"><b>${c.stamps} de ${biz.stamps_needed}</b> sellos</p>
       <p class="mute" style="text-align:center;margin-top:6px">${done ? esc(biz.ready_msg || '¡Completaste la tarjeta! Mostrala para canjear') + ': ' : 'Te faltan ' + left + ' sello' + (left > 1 ? 's' : '') + ' para: '}${esc(biz.reward)}</p></div>
@@ -171,7 +171,7 @@ async function stampTab() {
     try {
       const args = { p_slug: slug, p_pin: pin, p_code: code }; if (fn === 'biz_stamp') args.p_qty = document.getElementById('dbl')?.checked ? 2 : 1;
       const r = await rpc(fn, args);
-      flash(m, fn === 'biz_stamp' ? `Sello sumado a ${r.name}: ${r.stamps} de ${r.needed}` : `Premio canjeado: ${r.name}. Tarjeta reiniciada`, true);
+      flash(m, fn === 'biz_stamp' ? `Sello sumado a ${r.name}: ${r.stamps} de ${r.needed}` + (r.bonus ? ' 🎂 (incluye 1 de regalo por su cumpleaños)' : '') : `Premio canjeado: ${r.name}. Tarjeta reiniciada`, true);
       q.value = ''; stopCam(); vid.hidden = true; load();
       if (fn === 'biz_stamp') { m.insertAdjacentHTML('beforeend', '<button class="alt" id="und">Deshacer este sello</button>');
         und.onclick = async () => { try { await rpc('biz_undo', { p_slug: slug, p_pin: pin, p_code: code }); flash(m, 'Sello deshecho', true); load(); } catch (e) { flash(m, e.message, false); } }; }
@@ -231,7 +231,7 @@ async function statsTab() {
       <div class="stat"><b>${L.length}</b>clientes</div><div class="stat"><b>${S.today}</b>sellos hoy</div>
       <div class="stat"><b>${S.week}</b>sellos en 7 días</div><div class="stat"><b>${S.redeemed}</b>premios canjeados</div></div></div>
     <div class="card"><h2>Mejores clientes</h2>${top.length ? top.map(c => `<div class="row"><b>${esc(c.name)}</b><span>${c.visits} visitas</span></div>`).join('') : '<p class="mute">Todavía no hay datos.</p>'}</div>
-    ${!biz.ask_birthday ? '' : `<div class="card"><h2>Cumplen esta semana</h2>${bds.length ? bds.map(x => `<div class="row"><div><b>${esc(x.c.name)}</b><div class="mute">${x.days === 0 ? 'Hoy' : 'En ' + x.days + ' día' + (x.days > 1 ? 's' : '')}</div></div>${(x.c.promo_ok || !biz.ask_promo) ? '<a class="btn sm" target="_blank" rel="noopener" href="' + waLink(x.c.phone, '¡Feliz cumpleaños, ' + x.c.name.split(' ')[0] + '! Te saludamos de ' + biz.name + '.') + '">Saludar</a>' : (biz.ask_promo ? '<span class="mute">No aceptó mensajes</span>' : '')}</div>`).join('') : '<p class="mute">Nadie por ahora.</p>'}</div>`}
+    ${!biz.ask_birthday ? '' : `<div class="card"><h2>Cumplen esta semana</h2>${bds.length ? bds.map(x => `<div class="row"><div><b>${esc(x.c.name)}</b><div class="mute">${x.days === 0 ? 'Hoy' : 'En ' + x.days + ' día' + (x.days > 1 ? 's' : '')}</div></div>${(x.c.promo_ok || !biz.ask_promo) ? '<a class="btn sm" target="_blank" rel="noopener" href="' + waLink(x.c.phone, (biz.birthday_msg || '¡Feliz cumpleaños, {nombre}! 🎂 Te saludamos de {negocio}. Te esperamos para festejar.').replace(/\{nombre\}/g, x.c.name.split(' ')[0]).replace(/\{negocio\}/g, biz.name)) + '">Saludar</a>' : (biz.ask_promo ? '<span class="mute">No aceptó mensajes</span>' : '')}</div>`).join('') : '<p class="mute">Nadie por ahora.</p>'}</div>`}
     <div class="card"><h2>Hace más de 30 días que no vienen</h2>${old.length ? old.map(c => `<div class="row"><div><b>${esc(c.name)}</b><div class="mute">${c.stamps}/${biz.stamps_needed} sellos</div></div>${(c.promo_ok || !biz.ask_promo) ? '<a class="btn sm" target="_blank" rel="noopener" href="' + wa(c) + '">WhatsApp</a>' : (biz.ask_promo ? '<span class="mute">No aceptó ofertas</span>' : '')}</div>`).join('') : '<p class="mute">Nadie por ahora. Buena señal.</p>'}</div>`;
   } catch (e) { v.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
 }
@@ -278,8 +278,8 @@ async function listTab() {
       : '<p class="mute">Todavía nadie creó su tarjeta. Compartí el link o la tarjeta NFC.</p>') + '</div>';
     const ex = document.getElementById('exp');
     if (ex) ex.onclick = () => {
-      const rows = [['Nombre', 'Teléfono', 'Sellos', 'Premios canjeados', 'Visitas', 'Última visita', 'Cumpleaños', 'Acepta ofertas']].concat(
-        L.map(c => [c.name, c.phone, c.stamps, c.rewards, c.visits, new Date(c.last_seen).toLocaleDateString('es-AR'), c.birthday || '', c.promo_ok ? 'Sí' : 'No']));
+      const rows = [['Nombre', 'Teléfono', 'Sellos', 'Premios canjeados', 'Visitas', 'Última visita', 'Cumpleaños (día/mes)', 'Aceptó ofertas por WhatsApp']].concat(
+        L.map(c => [c.name, c.phone, c.stamps, c.rewards, c.visits, new Date(c.last_seen).toLocaleDateString('es-AR'), c.birthday ? c.birthday.split('-').reverse().join('/') : '', biz.ask_promo ? (c.promo_ok ? 'Sí' : 'No') : 'No se preguntó']));
       const blob = new Blob(['\ufeff' + rows.map(r => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'clientes-' + slug + '.csv'; a.click();
     };
@@ -288,7 +288,7 @@ async function listTab() {
       if (box.innerHTML) { box.innerHTML = ''; return; }
       try {
         const H = await rpc('biz_history', { p_slug: slug, p_pin: pin, p_code: b.dataset.h });
-        box.innerHTML = H.length ? H.map(h => `<div class="mute" style="padding:4px 0">${new Date(h.at).toLocaleString('es-AR')} · ${h.kind === 'redeem' ? 'Premio canjeado' : '+' + h.qty + ' sello' + (h.qty > 1 ? 's' : '')}</div>`).join('') : '<div class="mute">Sin movimientos</div>';
+        box.innerHTML = H.length ? H.map(h => `<div class="mute" style="padding:4px 0">${new Date(h.at).toLocaleString('es-AR')} · ${h.kind === 'redeem' ? 'Premio canjeado' : '+' + h.qty + ' sello' + (h.qty > 1 ? 's' : '') + (h.bonus ? ' 🎂 (incluye cumpleaños)' : '')}</div>`).join('') : '<div class="mute">Sin movimientos</div>';
       } catch (e) { box.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
     });
   } catch (e) { v.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
@@ -311,15 +311,18 @@ function cfgTab() {
   <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="c11" style="width:auto" ${biz.allow_double ? 'checked' : ''}> Permitir sumar 2 sellos en una compra</label>
   <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="c16" style="width:auto" ${biz.ask_birthday ? 'checked' : ''}> Pedir el cumpleaños al crear la tarjeta</label>
   <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="c17" style="width:auto" ${biz.ask_promo ? 'checked' : ''}> Pedir permiso para enviar ofertas por WhatsApp</label>
+  <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="c18" style="width:auto" ${biz.birthday_stamp ? 'checked' : ''}> Regalar 1 sello el día de su cumpleaños</label>
+  <label for="c19">Mensaje de cumpleaños para WhatsApp (usá {nombre} y {negocio}; vacío = mensaje por defecto)</label><input id="c19" maxlength="200" value="${esc(biz.birthday_msg || '')}" placeholder="¡Feliz cumple, {nombre}! 🎂 Te esperamos en {negocio} para festejar.">
+  <p class="mute" style="margin:6px 0 0">Estas dos opciones funcionan si activaste “Pedir el cumpleaños”.</p>
   <label for="c6">Nuevo PIN (6 a 12 números; vacío = no cambiarlo)</label><input id="c6" type="password" inputmode="numeric">
   <button id="sv">Guardar cambios</button><button class="alt" onclick="sessionStorage.removeItem('pin_'+slug);location.reload()">Cerrar sesión</button><div id="m"></div>
   <p class="mute" style="margin-top:14px">Link de tu tarjeta para clientes:<br><b>${esc(location.origin + location.pathname)}?b=${esc(slug)}</b></p><a class="btn alt" style="display:block;margin-top:8px" target="_blank" href="?b=${esc(slug)}&cartel=1">Imprimir cartel con QR</a></div>`;
   const pv = () => { const e = document.getElementById('pv'); e.style.setProperty('--ac', c4.value); e.style.setProperty('--ac2', c13.value); e.innerHTML = stampsGrid(6, 3, c12.value.trim() || '⭐'); };
   [c4, c12, c13].forEach(i => i.oninput = pv); pv();
   sv.onclick = async () => {
-    const a = { p_slug: slug, p_pin: pin, p_name: c1.value.trim() || biz.name, p_needed: +c2.value, p_reward: c3.value.trim() || 'Premio', p_color: c4.value, p_minutes: +c5.value || 0, p_new_pin: c6.value, p_expiry: +c9.value || 0, p_welcome: +c10.value || 0, p_double: c11.checked, p_emoji: c12.value.trim() || '⭐', p_color2: c13.value, p_notice: c14.value.trim(), p_ready: c15.value.trim(), p_ask_bday: c16.checked, p_ask_promo: c17.checked };
+    const a = { p_slug: slug, p_pin: pin, p_name: c1.value.trim() || biz.name, p_needed: +c2.value, p_reward: c3.value.trim() || 'Premio', p_color: c4.value, p_minutes: +c5.value || 0, p_new_pin: c6.value, p_expiry: +c9.value || 0, p_welcome: +c10.value || 0, p_double: c11.checked, p_emoji: c12.value.trim() || '⭐', p_color2: c13.value, p_notice: c14.value.trim(), p_ready: c15.value.trim(), p_ask_bday: c16.checked, p_ask_promo: c17.checked, p_bday_stamp: c18.checked, p_bday_msg: c19.value.trim() };
     try { await rpc('biz_update', a); if (c6.value) { pin = c6.value; sessionStorage.setItem('pin_' + slug, pin); }
-      biz = { ...biz, name: a.p_name, stamps_needed: a.p_needed, reward: a.p_reward, color: a.p_color, min_minutes: a.p_minutes, expiry_days: a.p_expiry, welcome_stamps: a.p_welcome, allow_double: a.p_double, stamp_emoji: a.p_emoji, color2: a.p_color2, notice: a.p_notice, ready_msg: a.p_ready, ask_birthday: a.p_ask_bday, ask_promo: a.p_ask_promo }; setColor(a.p_color, a.p_color2); flash(m, 'Cambios guardados', true); }
+      biz = { ...biz, name: a.p_name, stamps_needed: a.p_needed, reward: a.p_reward, color: a.p_color, min_minutes: a.p_minutes, expiry_days: a.p_expiry, welcome_stamps: a.p_welcome, allow_double: a.p_double, stamp_emoji: a.p_emoji, color2: a.p_color2, notice: a.p_notice, ready_msg: a.p_ready, ask_birthday: a.p_ask_bday, ask_promo: a.p_ask_promo, birthday_stamp: a.p_bday_stamp, birthday_msg: a.p_bday_msg }; setColor(a.p_color, a.p_color2); flash(m, 'Cambios guardados', true); }
     catch (e) { flash(m, e.message, false); }
   };
 }
