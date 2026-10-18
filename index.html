@@ -114,13 +114,15 @@ async function customerView() {
     <label for="p">Tu teléfono</label><input id="p" type="tel" autocomplete="tel" placeholder="Con característica, sin 0 ni 15">
     ${biz.ask_birthday ? '<label for="bd">Tu cumpleaños (opcional)</label><input id="bd" type="date">' : ''}
     ${biz.ask_promo ? '<label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink);font-size:14px"><input type="checkbox" id="pm" style="width:auto;margin-top:3px"> Quiero recibir ofertas y novedades por WhatsApp</label>' : ''}
-    <button id="go">Crear mi tarjeta</button><div id="m"></div></div>`;
-    document.getElementById('go').onclick = async () => {
+    <button id="go">Crear mi tarjeta</button><p class="mute" style="margin:10px 0 0">Al crear tu tarjeta aceptás la <a href="privacidad.html" style="color:inherit">política de privacidad</a>.</p><div id="m"></div></div>`;
+    const go = document.getElementById('go');
+    go.onclick = async () => {
       const name = n.value.trim(), phone = p.value.replace(/\D/g, '');
       if (name.length < 2 || phone.length < 6) return flash(m, 'Completá nombre y teléfono', false);
+      go.disabled = true;
       try { const code = await rpc('register_customer', { p_slug: slug, p_name: name, p_phone: phone, p_birthday: document.getElementById('bd')?.value || null, p_promo: !!document.getElementById('pm')?.checked });
         localStorage.setItem('code_' + slug, code); customerView(); }
-      catch (e) { flash(m, e.message, false); }
+      catch (e) { go.disabled = false; flash(m, e.message, false); }
     };
     return;
   }
@@ -137,7 +139,15 @@ async function customerView() {
       ${c.expires && c.stamps > 0 && !done ? '<p class="mute" style="text-align:center;margin:8px 0 0">⏳ Tus sellos vencen el ' + esc(c.expires) + '</p>' : ''}</div>
       <div class="card"><p class="mute" style="text-align:center">Mostrá este código al negocio para sumar un sello</p>
       <div class="qr">${qr(c.code)}</div><div class="code">${esc(c.code)}</div>
-      <p class="mute" style="text-align:center;margin:12px 0 0">Premios canjeados: ${c.rewards}</p></div>${links()}`;
+      <p class="mute" style="text-align:center;margin:12px 0 0">Premios canjeados: ${c.rewards}</p></div>${links()}
+      <p class="mute" style="text-align:center"><a href="privacidad.html" style="color:inherit">Política de privacidad</a> · <a href="#" id="del" style="color:inherit">Borrar mi tarjeta y mis datos</a></p><div id="dm"></div>`;
+      document.getElementById('del').onclick = async e => {
+        e.preventDefault();
+        if (!confirm('¿Borrar tu tarjeta de ' + biz.name + '? Se eliminan tu nombre, teléfono y todos tus sellos. No se puede deshacer.')) return;
+        clearInterval(poll);
+        try { await rpc('delete_my_card', { p_slug: slug, p_code: saved }); localStorage.removeItem('code_' + slug); customerView(); }
+        catch (err) { flash(document.getElementById('dm'), err.message, false); poll = setInterval(draw, 10000); }
+      };
     } catch (e) { $app.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
   }
   await draw(); poll = setInterval(draw, 10000);
@@ -183,7 +193,10 @@ async function stampTab() {
     res.querySelectorAll('button').forEach(b => b.onclick = () => act(b.dataset.f, b.dataset.c, +b.dataset.at));
   };
   const load = async () => { try { L = await rpc('biz_customers', { p_slug: slug, p_pin: pin }); render(); } catch (e) { flash(m, e.message, false); } };
+  let busy = false;
   const act = async (fn, code, at) => {
+    if (busy) return;
+    busy = true; res.querySelectorAll('button').forEach(b => b.disabled = true);
     try {
       const args = { p_slug: slug, p_pin: pin, p_code: code }; if (fn === 'biz_claim') args.p_at = at;
       if (fn === 'biz_stamp') args.p_qty = document.getElementById('dbl')?.checked ? 2 : 1;
@@ -191,8 +204,9 @@ async function stampTab() {
       flash(m, fn === 'biz_stamp' ? `Sello sumado a ${r.name}: ${r.stamps} de ${r.needed}` + (r.bonus ? ' 🎂 (incluye 1 de regalo por su cumpleaños)' : '') : fn === 'biz_claim' ? `Canjeado a ${r.name}: ${r.reward}` : `Premio canjeado: ${r.name}. Tarjeta reiniciada`, true);
       q.value = ''; stopCam(); vid.hidden = true; load();
       if (fn === 'biz_stamp') { m.insertAdjacentHTML('beforeend', '<button class="alt" id="und">Deshacer este sello</button>');
-        und.onclick = async () => { try { await rpc('biz_undo', { p_slug: slug, p_pin: pin, p_code: code }); flash(m, 'Sello deshecho', true); load(); } catch (e) { flash(m, e.message, false); } }; }
-    } catch (e) { flash(m, e.message, false); }
+        und.onclick = async () => { und.disabled = true; try { await rpc('biz_undo', { p_slug: slug, p_pin: pin, p_code: code }); flash(m, 'Sello deshecho', true); load(); } catch (e) { flash(m, e.message, false); } }; }
+    } catch (e) { flash(m, e.message, false); render(); }
+    finally { busy = false; }
   };
   q.oninput = render; load();
   cam.onclick = async () => {
@@ -305,7 +319,7 @@ async function listTab() {
     const cell = x => { x = String(x ?? ''); if (/^[=+\-@\t\r]/.test(x)) x = "'" + x; return '"' + x.replace(/"/g, '""') + '"'; };
     v.innerHTML = `<div class="card"><h2>${L.length} cliente${L.length === 1 ? '' : 's'}</h2>` + (L.length
       ? '<button class="alt" id="exp" style="margin:0 0 8px">Descargar lista (Excel / CSV)</button>' + L.map(c =>
-        `<div class="row" style="flex-wrap:wrap"><div><b>${esc(c.name)}</b><div class="mute">${esc(c.phone)} · ${c.stamps}/${biz.stamps_needed} sellos</div></div><button class="alt sm" data-h="${esc(c.code)}">Historial</button><div id="h-${esc(c.code)}" style="width:100%"></div></div>`).join('')
+        `<div class="row" style="flex-wrap:wrap"><div><b>${esc(c.name)}</b><div class="mute">${esc(c.phone)} · ${c.stamps}/${biz.stamps_needed} sellos</div></div><div style="display:flex;gap:6px"><button class="alt sm" data-h="${esc(c.code)}">Historial</button><button class="alt sm" data-del="${esc(c.code)}" data-n="${esc(c.name)}">Borrar</button></div><div id="h-${esc(c.code)}" style="width:100%"></div></div>`).join('')
       : '<p class="mute">Todavía nadie creó su tarjeta. Compartí el link o la tarjeta NFC.</p>') + '</div>';
     const ex = document.getElementById('exp');
     if (ex) ex.onclick = () => {
@@ -321,6 +335,12 @@ async function listTab() {
         const H = await rpc('biz_history', { p_slug: slug, p_pin: pin, p_code: b.dataset.h });
         box.innerHTML = H.length ? H.map(h => `<div class="mute" style="padding:4px 0">${new Date(h.at).toLocaleString('es-AR')} · ${h.kind === 'redeem' ? 'Premio canjeado' : h.kind === 'tier' ? 'Premio intermedio canjeado (sello ' + h.qty + ')' : '+' + h.qty + ' sello' + (h.qty > 1 ? 's' : '') + (h.bonus ? ' 🎂 (incluye cumpleaños)' : '')}</div>`).join('') : '<div class="mute">Sin movimientos</div>';
       } catch (e) { box.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+    });
+    v.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      if (!confirm('¿Borrar a ' + b.dataset.n + ' y todos sus datos y sellos? No se puede deshacer.')) return;
+      b.disabled = true;
+      try { await rpc('biz_delete_customer', { p_slug: slug, p_pin: pin, p_code: b.dataset.del }); listTab(); }
+      catch (e) { b.disabled = false; document.getElementById('h-' + b.dataset.del).innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
     });
   } catch (e) { v.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
 }
@@ -349,7 +369,7 @@ function cfgTab() {
   <label for="c19">Mensaje de cumpleaños para WhatsApp (usá {nombre} y {negocio}; vacío = mensaje por defecto)</label><input id="c19" maxlength="200" value="${esc(biz.birthday_msg || '')}" placeholder="¡Feliz cumple, {nombre}! 🎂 Te esperamos en {negocio} para festejar.">
   <p class="mute" style="margin:6px 0 0">Estas dos opciones funcionan si activaste “Pedir el cumpleaños”.</p>
   <label>Premios intermedios (opcional): se canjean al llegar a ese sello, sin reiniciar la tarjeta</label>
-  ${[0, 1, 2].map(i => '<div style="display:flex;gap:8px;margin-top:8px"><input id="tn' + i + '" type="number" min="1" placeholder="Sello nº" style="width:36%" value="' + ((biz.tiers || [])[i]?.at || '') + '"><input id="tr' + i + '" maxlength="60" placeholder="Premio (ej: Café gratis)" value="' + esc((biz.tiers || [])[i]?.reward || '') + '"></div>').join('')}
+  ${[0, 1, 2].map(i => '<div style="display:flex;gap:8px;margin-top:8px"><input id="tn' + i + '" type="number" min="1" placeholder="Sello n��" style="width:36%" value="' + ((biz.tiers || [])[i]?.at || '') + '"><input id="tr' + i + '" maxlength="60" placeholder="Premio (ej: Café gratis)" value="' + esc((biz.tiers || [])[i]?.reward || '') + '"></div>').join('')}
   <label for="c6">Nuevo PIN (6 a 12 números; vacío = no cambiarlo)</label><input id="c6" type="password" inputmode="numeric">
   <button id="sv">Guardar cambios</button><button class="alt" onclick="sessionStorage.removeItem('pin_'+slug);location.reload()">Cerrar sesión</button><div id="m"></div>
   <p class="mute" style="margin-top:14px">Link de tu tarjeta para clientes:<br><b>${esc(location.origin + location.pathname)}?b=${esc(slug)}</b></p><a class="btn alt" style="display:block;margin-top:8px" target="_blank" href="?b=${esc(slug)}&cartel=1">Imprimir cartel con QR</a></div>`;
