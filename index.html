@@ -146,7 +146,7 @@ function stopCam() { if (stream) { stream.getTracks().forEach(t => t.stop()); st
 function panel(tab) {
   stopCam();
   const T = [['stamp', 'Sumar sello'], ['list', 'Clientes'], ['stats', 'Resumen'], ['cfg', 'Ajustes']];
-  $app.innerHTML = `<h1>${esc(biz.name)}</h1><div class="tabs">${T.map(t => `<button class="${t[0] === tab ? 'on' : ''}" data-t="${t[0]}">${t[1]}</button>`).join('')}</div><div id="v"></div>`;
+  $app.innerHTML = `<h1>${esc(biz.name)}</h1><div class="tabs">${T.map(t => `<button class="${t[0] === tab ? 'on' : ''}" data-t="${t[0]}">${t[1]}</button>`).join('')}</div><div id="v"></div><div class="card" style="margin-top:14px">${installHtml('panel')}</div>`;
   document.querySelectorAll('[data-t]').forEach(b => b.onclick = () => panel(b.dataset.t));
   ({ stamp: stampTab, list: listTab, stats: statsTab, cfg: cfgTab })[tab]();
 }
@@ -195,19 +195,21 @@ async function stampTab() {
 }
 
 let inst = null;
-addEventListener('beforeinstallprompt', e => { e.preventDefault(); inst = e; const c = document.getElementById('inst'); if (c) c.innerHTML = installHtml(); });
-function installApp() { if (inst) inst.prompt(); }
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); inst = e; });
+function installApp(btn) {
+  if (inst) { inst.prompt(); return; }
+  btn.nextElementSibling.innerHTML = 'Abrí esta página con <b>Chrome</b>, tocá el menú de los tres puntos (⋮) y elegí <b>Instalar app</b>. Si solo ves “Agregar a pantalla de inicio”, esperá unos segundos, recargá la página y probá de nuevo.';
+}
 function setManifest(kind) {
   let l = document.querySelector('link[rel=manifest]');
   if (!l) { l = document.createElement('link'); l.rel = 'manifest'; document.head.appendChild(l); }
   l.href = kind === 'panel' ? 'manifest-panel.json' : 'manifest.json';
 }
-function installHtml(wallet) {
-  return inst ? '<button onclick="installApp()" style="margin-top:0">Agregar a mi celular</button>'
-    : `<p class="mute" style="text-align:center;margin:0">${wallet ? 'Para tenerla a mano: en el menú del navegador tocá “Agregar a pantalla de inicio”. Se instala como “Mis tarjetas”.' : 'Para instalar la app, tocá “Ver todas mis tarjetas” y agregala a la pantalla de inicio desde ahí.'}</p>`;
+function installHtml(kind) {
+  return `<button onclick="installApp(this)" style="margin-top:0">${kind === 'panel' ? 'Instalar el Panel de sellos' : 'Instalar la app Mis tarjetas'}</button><div class="mute" style="margin-top:8px"></div>`;
 }
 function links() {
-  return `<div class="card">${installHtml(false)}<a class="btn alt" style="display:block;margin-top:12px" href="?mis-tarjetas">Ver todas mis tarjetas</a></div>`;
+  return `<div class="card">${installHtml('card')}<a class="btn alt" style="display:block;margin-top:12px" href="?mis-tarjetas">Ver todas mis tarjetas</a></div>`;
 }
 
 async function statsTab() {
@@ -262,7 +264,7 @@ async function walletView() {
   w.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
     if (confirm('¿Quitar esta tarjeta de este celular? No perdés tus sellos: podés recuperarla con tu teléfono.')) { localStorage.removeItem('code_' + b.dataset.rm); walletView(); }
   });
-  w.insertAdjacentHTML('beforeend', '<div class="card" id="inst">' + installHtml(true) + '</div>');
+  w.insertAdjacentHTML('beforeend', '<div class="card" id="inst">' + installHtml('card') + '</div>');
 }
 
 async function listTab() {
