@@ -86,9 +86,21 @@ const hexOk = x => /^#[0-9a-f]{6}$/i.test(x || '');
 const setColor = (c, c2) => { const a = hexOk(c) ? c : '#c2410c'; document.documentElement.style.setProperty('--ac', a); document.documentElement.style.setProperty('--ac2', hexOk(c2) ? c2 : a); };
 const flash = (el, t, ok) => { el.innerHTML = `<div class="msg ${ok ? 'ok' : 'err'}">${esc(t)}</div>`; };
 function qr(text) { const q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag(4, 0); }
-function stampsGrid(n, on, emoji, tiers) {
+function setBg(c) {
+  const st = document.documentElement.style, ks = ['--bg', '--card', '--ink', '--mute', '--line'];
+  if (!hexOk(c)) { ks.forEach(k => st.removeProperty(k)); return; }
+  const rgb = [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)), lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
+  const ink = lum > 0.55 ? [26, 26, 26] : [245, 245, 245];
+  const mix = (a, b, t) => '#' + a.map((v, i) => Math.round(v + (b[i] - v) * t).toString(16).padStart(2, '0')).join('');
+  st.setProperty('--bg', c); st.setProperty('--card', mix(rgb, ink, 0.06)); st.setProperty('--ink', mix(ink, ink, 0));
+  st.setProperty('--mute', mix(rgb, ink, 0.6)); st.setProperty('--line', mix(rgb, ink, 0.18));
+}
+function stampsGrid(n, on, emoji, tiers, rEmoji) {
   let h = '<div class="grid">';
-  for (let i = 0; i < n; i++) h += `<div class="s ${i < on ? 'on' : ''}${(tiers || []).some(t => t.at === i + 1) ? ' tier' : ''}">${i < on ? esc(emoji || '✓') : (tiers || []).some(t => t.at === i + 1) ? '🎁' : ''}</div>`;
+  for (let i = 0; i < n; i++) {
+    const last = i === n - 1, tier = (tiers || []).some(t => t.at === i + 1);
+    h += `<div class="s ${i < on ? 'on' : ''}${last || tier ? ' tier' : ''}">${last ? esc(rEmoji || '🎁') : i < on ? esc(emoji || '✓') : tier ? '🎁' : ''}</div>`;
+  }
   return h + '</div>';
 }
 
@@ -118,7 +130,7 @@ async function customerView() {
       if (!c) { localStorage.removeItem('code_' + slug); return customerView(); }
       const done = c.stamps >= biz.stamps_needed, left = biz.stamps_needed - c.stamps, bdToday = c.birthday && c.birthday === new Date().toLocaleDateString('en-CA').slice(5);
       $app.innerHTML = `<h1>${esc(biz.name)}</h1><p class="mute">Hola, ${esc(c.name)}</p>${biz.notice ? '<div class="card notice">' + esc(biz.notice) + '</div>' : ''}${bdToday ? '<div class="card notice">🎂 ¡Feliz cumpleaños, ' + esc(c.name.split(' ')[0]) + '!' + (biz.birthday_stamp ? ' Pasá hoy por el local y te regalamos 1 sello extra.' : '') + '</div>' : ''}
-      <div class="card">${stampsGrid(biz.stamps_needed, c.stamps, biz.stamp_emoji, biz.tiers)}
+      <div class="card">${stampsGrid(biz.stamps_needed, c.stamps, biz.stamp_emoji, biz.tiers, biz.reward_emoji)}
       <p style="text-align:center;margin:0"><b>${c.stamps} de ${biz.stamps_needed}</b> sellos</p>
       <p class="mute" style="text-align:center;margin-top:6px">${done ? esc(biz.ready_msg || '¡Completaste la tarjeta! Mostrala para canjear') + ': ' : 'Te faltan ' + left + ' sello' + (left > 1 ? 's' : '') + ' para: '}${esc(biz.reward_emoji || '🎁')} ${esc(biz.reward)}</p>
       ${(biz.tiers || []).map(t => '<p class="mute" style="margin:4px 0;text-align:center">🎁 Sello ' + t.at + ': ' + esc(t.reward) + (c.stamps >= t.at ? ((c.claimed || []).includes(t.at) ? ' ✔ canjeado' : ' · ¡listo para canjear!') : '') + '</p>').join('')}
@@ -321,6 +333,8 @@ function cfgTab() {
   <label for="c20">Emoji del premio</label><input id="c20" maxlength="8" value="${esc(biz.reward_emoji || '🎁')}">
   <label for="c4">Color de la tarjeta</label><input id="c4" type="color" value="${esc(biz.color)}">
   <label for="c13">Segundo color (para degradé; igual al primero = sin degradé)</label><input id="c13" type="color" value="${esc(biz.color2 || biz.color)}">
+  <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="c22" style="width:auto" ${biz.bg_color ? '' : 'checked'}> Fondo automático (claro u oscuro según el celular)</label>
+  <label for="c21">Color de fondo de la tarjeta</label><input id="c21" type="color" value="${esc(biz.bg_color || '#1c1713')}">
   <label for="c12">Emoji del sello</label><input id="c12" maxlength="8" value="${esc(biz.stamp_emoji || '⭐')}">
   <div id="pv"></div>
   <label for="c14">Aviso para tus clientes (arriba de la tarjeta; vacío = ninguno)</label><input id="c14" maxlength="120" value="${esc(biz.notice || '')}" placeholder="Hoy 2x1 en café">
@@ -339,13 +353,16 @@ function cfgTab() {
   <label for="c6">Nuevo PIN (6 a 12 números; vacío = no cambiarlo)</label><input id="c6" type="password" inputmode="numeric">
   <button id="sv">Guardar cambios</button><button class="alt" onclick="sessionStorage.removeItem('pin_'+slug);location.reload()">Cerrar sesión</button><div id="m"></div>
   <p class="mute" style="margin-top:14px">Link de tu tarjeta para clientes:<br><b>${esc(location.origin + location.pathname)}?b=${esc(slug)}</b></p><a class="btn alt" style="display:block;margin-top:8px" target="_blank" href="?b=${esc(slug)}&cartel=1">Imprimir cartel con QR</a></div>`;
-  const pv = () => { const e = document.getElementById('pv'); e.style.setProperty('--ac', c4.value); e.style.setProperty('--ac2', c13.value); e.innerHTML = stampsGrid(6, 3, c12.value.trim() || '⭐'); };
-  [c4, c12, c13].forEach(i => i.oninput = pv); pv();
+  const pv = () => { const e = document.getElementById('pv'); e.style.setProperty('--ac', c4.value); e.style.setProperty('--ac2', c13.value); e.innerHTML = stampsGrid(6, 3, c12.value.trim() || '⭐', [], c20.value.trim() || '🎁'); };
+  [c4, c12, c13, c20].forEach(i => i.oninput = pv); pv();
+  c21.oninput = () => { c22.checked = false; setBg(c21.value); };
+  c22.onchange = () => setBg(c22.checked ? '' : c21.value);
   sv.onclick = async () => {
     const a = { p_slug: slug, p_pin: pin, p_name: c1.value.trim() || biz.name, p_needed: +c2.value, p_reward: c3.value.trim() || 'Premio', p_color: c4.value, p_minutes: +c5.value || 0, p_new_pin: c6.value, p_expiry: +c9.value || 0, p_welcome: +c10.value || 0, p_double: c11.checked, p_emoji: c12.value.trim() || '⭐', p_color2: c13.value, p_notice: c14.value.trim(), p_ready: c15.value.trim(), p_ask_bday: c16.checked, p_ask_promo: c17.checked, p_bday_stamp: c18.checked, p_bday_msg: c19.value.trim(),
       p_tiers: JSON.stringify([0, 1, 2].map(i => ({ at: +document.getElementById('tn' + i).value, reward: document.getElementById('tr' + i).value.trim() })).filter(t => t.at && t.reward).sort((x, y) => x.at - y.at)), p_reward_emoji: c20.value.trim() || '🎁' };
-    try { await rpc('biz_update', a); if (c6.value) { pin = c6.value; sessionStorage.setItem('pin_' + slug, pin); }
-      biz = { ...biz, name: a.p_name, stamps_needed: a.p_needed, reward: a.p_reward, color: a.p_color, min_minutes: a.p_minutes, expiry_days: a.p_expiry, welcome_stamps: a.p_welcome, allow_double: a.p_double, stamp_emoji: a.p_emoji, color2: a.p_color2, notice: a.p_notice, ready_msg: a.p_ready, ask_birthday: a.p_ask_bday, ask_promo: a.p_ask_promo, birthday_stamp: a.p_bday_stamp, birthday_msg: a.p_bday_msg, tiers: JSON.parse(a.p_tiers), reward_emoji: a.p_reward_emoji }; setColor(a.p_color, a.p_color2); flash(m, 'Cambios guardados', true); }
+    const bgVal = c22.checked ? '' : c21.value;
+    try { await rpc('biz_set_bg', { p_slug: slug, p_pin: pin, p_bg: bgVal }); await rpc('biz_update', a); if (c6.value) { pin = c6.value; sessionStorage.setItem('pin_' + slug, pin); }
+      biz = { ...biz, name: a.p_name, stamps_needed: a.p_needed, reward: a.p_reward, color: a.p_color, min_minutes: a.p_minutes, expiry_days: a.p_expiry, welcome_stamps: a.p_welcome, allow_double: a.p_double, stamp_emoji: a.p_emoji, color2: a.p_color2, notice: a.p_notice, ready_msg: a.p_ready, ask_birthday: a.p_ask_bday, ask_promo: a.p_ask_promo, birthday_stamp: a.p_bday_stamp, birthday_msg: a.p_bday_msg, tiers: JSON.parse(a.p_tiers), reward_emoji: a.p_reward_emoji, bg_color: bgVal }; setColor(a.p_color, a.p_color2); flash(m, 'Cambios guardados', true); }
     catch (e) { flash(m, e.message, false); }
   };
 }
@@ -364,7 +381,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catc
   try {
     biz = await rpc('get_business', { p_slug: slug });
     if (!biz) { $app.innerHTML = '<div class="msg err">Negocio no encontrado</div>'; return; }
-    setColor(biz.color, biz.color2);
+    setColor(biz.color, biz.color2); setBg(biz.bg_color);
     if (isPanel) { document.title = biz.name; setManifest('panel'); try { localStorage.setItem('panel_slug', slug); } catch {} }
     else { document.title = 'Mis tarjetas'; setManifest('wallet'); }
     if (qs.has('cartel')) return posterView();
