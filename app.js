@@ -105,6 +105,8 @@ function stampsGrid(n, on, emoji, tiers, rEmoji) {
 function visitaHtml(c) {
   if (c.last_days === null || c.last_days === undefined) return '';
   const d = c.last_days, v = c.visits || 0;
+  /* Todavía no vino nunca (solo tiene el sello de bienvenida): lo invitamos. */
+  if (v === 0) return '<p class="mute" style="text-align:center;margin:12px 0 0">👋 ¡Te esperamos! Todavía no sumaste tu primer sello.</p>';
   let cuando;
   if (d <= 0) cuando = 'Hoy';
   else if (d === 1) cuando = 'Ayer';
@@ -112,7 +114,7 @@ function visitaHtml(c) {
   const linea = d <= 0
     ? '✅ Viniste hoy. ¡Gracias!'
     : '🕒 Última visita: ' + cuando + ' (' + esc(c.last_date) + ')';
-  const visitas = v > 0 ? '<p class="mute" style="text-align:center;margin:6px 0 0">🎉 Ya viniste <b>' + v + '</b> ve' + (v === 1 ? 'z' : 'ces') + ' en total.</p>' : '';
+  const visitas = '<p class="mute" style="text-align:center;margin:6px 0 0">🎉 Ya viniste <b>' + v + '</b> ve' + (v === 1 ? 'z' : 'ces') + ' en total.</p>';
   return '<p class="mute" style="text-align:center;margin:12px 0 0">' + linea + '</p>' + visitas;
 }
 async function customerView() {
