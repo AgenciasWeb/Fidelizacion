@@ -251,7 +251,7 @@ function panel(tab) {
 async function stampTab() {
   v.innerHTML = `<div class="card"><label for="q">Buscar cliente por nombre o teléfono</label><input id="q" autocomplete="off" placeholder="Escribí un nombre">
   ${biz.allow_double ? '<label class="consent" style="font-size:15px"><input type="checkbox" id="dbl"> Sumar 2 sellos (compra grande)</label>' : ''}<div id="res"></div><div id="m" aria-live="polite"></div>
-  <button class="alt" id="cam">Escanear QR del cliente con la cámara</button><button class="alt" id="mgo" style="margin-top:8px">${biz.menu_enabled ? '🍽️ Editar el menú' : '🍽️ Configurar el menú'}</button><video id="vid" playsinline muted hidden aria-label="Vista de la cámara para escanear el código del cliente"></video></div>`;
+  <button class="alt" id="cam">Escanear QR del cliente con la cámara</button><video id="vid" playsinline muted hidden aria-label="Vista de la cámara para escanear el código del cliente"></video></div>`;
   let L = [];
   const render = () => {
     const t = q.value.trim().toLowerCase();
@@ -281,8 +281,6 @@ async function stampTab() {
     finally { busy = false; }
   };
   q.oninput = render; load();
-  const mgo = document.getElementById('mgo');
-  if (mgo) mgo.onclick = () => panel('menu');
   cam.onclick = async () => {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
