@@ -25,7 +25,27 @@ async function rpc(fn, args) {
   return d;
 }
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const hexOk = x => /^#[0-9a-f]{6}$/i.test(x || '');
+/* Sube una foto del menú a Supabase Storage usando un "pase" que entrega
+   biz_photo_sign (valida el PIN). Devuelve la URL pública. */
+async function subirFoto(slug, pin, file, onProgress) {
+  const ext = ((file.name || '').split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const s = await rpc('biz_photo_sign', { p_slug: slug, p_pin: pin, p_ext: ext });
+  if (!s || !s.token || !s.path) throw new Error('No se pudo preparar la subida');
+  await new Promise((res, rej) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', SUPABASE_URL + '/storage/v1/object/menu/' + s.path);
+    x.setRequestHeader('apikey', SUPABASE_KEY);
+    x.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+    x.setRequestHeader('x-foto-token', s.token);
+    x.setRequestHeader('Content-Type', file.type || 'image/jpeg');
+    x.upload.onprogress = e => { if (onProgress && e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100)); };
+    x.onload = () => (x.status >= 200 && x.status < 300) ? res() : rej(new Error('No se pudo subir la foto'));
+    x.onerror = () => rej(new Error('Fallo de conexión al subir la foto'));
+    x.send(file);
+  });
+  try { await rpc('biz_photo_done', { p_slug: slug, p_pin: pin, p_token: s.token }); } catch {}
+  return s.url_publica;
+}const hexOk = x => /^#[0-9a-f]{6}$/i.test(x || '');
 const lumOf = c => { if (!hexOk(c)) return 0; const v = [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16) / 255).map(x => x <= .04045 ? x / 12.92 : Math.pow((x + .055) / 1.055, 2.4)); return .2126 * v[0] + .7152 * v[1] + .0722 * v[2]; };
 const textOn = c => lumOf(c) > .179 ? '#1a1a1a' : '#fff';
 const mixHex = (a, b) => '#' + [1, 3, 5].map(i => Math.round((parseInt(a.slice(i, i + 2), 16) + parseInt(b.slice(i, i + 2), 16)) / 2).toString(16).padStart(2, '0')).join('');
@@ -427,13 +447,18 @@ async function menuView() {
     const q = normText(document.getElementById('mq').value);
     const its = (data.items || []).filter(x => !q || normText(x.name).includes(q) || normText(x.description).includes(q));
     if (!its.length) { box.innerHTML = `<div class="card"><p class="mute" style="margin:0">${q ? 'No encontramos nada con ese texto.' : 'Todavía no hay productos cargados.'}</p></div>`; return; }
+    /* índices de categorías (foto + emoji) que cargó el negocio */
+    const catInfo = {};
+    (data.categories || []).forEach(c => { catInfo[c.name] = c; });
     const groups = [], seen = {};
     its.forEach(x => { const c = x.category || ''; if (!(c in seen)) { seen[c] = groups.length; groups.push({ c, list: [] }); } groups[seen[c]].list.push(x); });
     const chips = groups.filter(g => g.c).length > 3 ? `<nav class="mchips" aria-label="Categorías del menú">${groups.map((g, i) => g.c ? `<a class="mchip" href="#cat-${i}">${esc(g.c)}</a>` : '').join('')}</nav>` : '';
     box.innerHTML = chips + groups.map((g, i) => {
-      const ico = (g.list.map(x => String(x.emoji || '').trim()).find(e => e) || '');
-      return `${g.c ? `<h2 class="mhead" id="cat-${i}">${ico ? `<span class="mhead-ico" aria-hidden="true">${esc(ico)}</span>` : ''}<span class="mhead-t">${esc(g.c)}</span><span class="mhead-n">${g.list.length}</span></h2>` : ''}
-    <ul class="mlist">${g.list.map(x => { const em = String(x.emoji || '').trim(); return `<li class="mrow${x.available ? '' : ' sold'}">${em ? `<span class="memoji" aria-hidden="true">${esc(em)}</span>` : ''}<div class="mtxt"><b>${esc(x.name)}</b>${x.description ? `<div class="mute">${esc(x.description)}</div>` : ''}</div><div class="mprice"><span class="mprice-v">${money.format(Number(x.price) || 0)}</span>${x.available ? '' : '<span class="badge">Agotado</span>'}</div></li>`; }).join('')}</ul>`;
+      const info = catInfo[g.c] || {};
+      const foto = String(info.photo || '').trim();
+      const ico = String(info.emoji || '').trim() || (g.list.map(x => String(x.emoji || '').trim()).find(e => e) || '');
+      const head = g.c ? `<header class="mcover${foto ? '' : ' noimg'}" id="cat-${i}">${foto ? `<img src="${esc(foto)}" alt="" loading="lazy" onerror="this.remove()">` : ''}<div class="mcover-sign">${ico ? `<span class="mcover-ico" aria-hidden="true">${esc(ico)}</span>` : ''}<span class="mcover-t">${esc(g.c)}</span><span class="mcover-n">${g.list.length}</span></div></header>` : '';
+      return head + `<ul class="mlist">${g.list.map(x => { const em = String(x.emoji || '').trim(); return `<li class="mrow${x.available ? '' : ' sold'}">${em ? `<span class="memoji" aria-hidden="true">${esc(em)}</span>` : ''}<div class="mtxt"><b>${esc(x.name)}</b>${x.description ? `<div class="mute">${esc(x.description)}</div>` : ''}</div><div class="mprice"><span class="mprice-v">${money.format(Number(x.price) || 0)}</span>${x.available ? '' : '<span class="badge">Agotado</span>'}</div></li>`; }).join('')}</ul>`;
     }).join('');
   };
   const load = async () => {
@@ -452,9 +477,9 @@ async function menuView() {
 async function menuTab() {
   menuDirty = false;
   addEventListener('beforeunload', menuUnload);
-  let items = [], updated = null;
+  let items = [], updated = null, cats = [];
   v.innerHTML = `<div class="card"><h2>Menú del negocio</h2>
-  <p class="mute" style="margin:0 0 8px">Cargá los productos acá y tocá “Guardar cambios”. Se ven en el menú público apenas guardás.</p>
+  <p class="mute" style="margin:0 0 8px">Cargá los productos y las fotos de cada categoría. Tocá “Guardar cambios” y se ven en el menú público al instante.</p>
   <p class="mute" id="mt" style="margin:0 0 10px">Última actualización: —</p>
   <label for="mlk">Link del menú para tus clientes</label><input id="mlk" readonly value="">
   <button class="alt sm" id="mcp" style="margin-top:8px">Copiar link</button><div id="mcs" aria-live="polite"></div></div>
@@ -477,24 +502,64 @@ async function menuTab() {
   const pushItem = it => { let last = -1; items.forEach((x, i) => { if (x.category === it.category) last = i; }); const at = last < 0 ? items.length : last + 1; items.splice(at, 0, it); return at; };
   const setDirty = d => { menuDirty = d; const el = document.getElementById('mdy'); if (el) el.hidden = !d; };
   const updLine = () => { mt.textContent = 'Última actualización: ' + (updated ? new Date(updated).toLocaleString('es-AR') : '—'); };
-  const adopt = r => { updated = r.updated; items = regroup((r.items || []).map(x => ({ id: x.id, category: normCat(x.category), name: x.name || '', description: x.description || '', price: Number(x.price) || 0, available: !!x.available, hidden: !!x.hidden, emoji: x.emoji || '' }))); setDirty(false); updLine(); };
-  const reload = async () => { try { adopt(await rpc('biz_menu_list', { p_slug: slug, p_pin: pin })); render(); } catch (e) { flash(mm, e.message, false); } };
+  const catOf = n => { const c = cats.find(x => x.name === n); if (c) return c; const nn = { name: n, emoji: '', photo: '' }; cats.push(nn); return nn; };
+  const adopt = r => { updated = r.updated; cats = []; items = regroup((r.items || []).map(x => ({ id: x.id, category: normCat(x.category), name: x.name || '', description: x.description || '', price: Number(x.price) || 0, available: !!x.available, hidden: !!x.hidden, emoji: x.emoji || '' }))); items.forEach(x => catOf(x.category)); setDirty(false); updLine(); };
+  const loadCats = async () => { try { const r = await rpc('biz_cat_list', { p_slug: slug, p_pin: pin }); (r.categories || []).forEach(c => { const e = catOf(c.name); e.emoji = c.emoji || ''; e.photo = c.photo || ''; }); } catch {} };
+  const reload = async () => { try { adopt(await rpc('biz_menu_list', { p_slug: slug, p_pin: pin })); await loadCats(); render(); } catch (e) { flash(mm, e.message, false); } };
   const render = () => {
     const box = document.getElementById('mg');
     if (!box) return;
     const groups = [], ix = {};
     items.forEach((x, i) => { const c = x.category || ''; if (!(c in ix)) { ix[c] = groups.length; groups.push({ c, rows: [], start: i }); } groups[ix[c]].rows.push({ x, i }); });
-    const cats = groups.map(g => g.c);
-    box.innerHTML = groups.length ? groups.map(g => `
-    <div class="ecat"><input data-cat="${g.start}" value="${esc(g.c)}" maxlength="40" placeholder="Sin categoría" aria-label="Nombre de la categoría" style="max-width:55%"><span class="mute">${g.rows.length} producto${g.rows.length === 1 ? '' : 's'}</span><button class="alt sm" data-ac="${esc(g.c)}" style="margin-left:auto">+ Agregar producto</button></div>
-    ${g.rows.map(r => { const it = r.x, i = r.i; return `
-    <div class="erow"><input class="eemoji" data-emo="${i}" value="${esc(it.emoji || '')}" maxlength="8" placeholder="🍔" aria-label="Emoji del producto ${i + 1}"><input class="eic" data-name="${i}" value="${esc(it.name)}" maxlength="80" aria-label="Nombre del producto ${i + 1}">
-    <input data-price="${i}" type="number" inputmode="decimal" step="any" min="0" value="${esc(it.price)}" aria-label="Precio del producto ${i + 1}">
-    <span class="ebtns"><button class="alt sm" data-up="${i}" aria-label="Subir el producto ${i + 1}">↑</button><button class="alt sm" data-dn="${i}" aria-label="Bajar el producto ${i + 1}">↓</button><button class="alt sm" data-del="${i}" aria-label="Eliminar el producto ${i + 1}">✕</button></span></div>
-    <div class="eopts">${cats.length > 1 ? `<label class="consent"><span class="mute">Categoría:</span> <select data-mv="${i}" aria-label="Categoría del producto ${i + 1}">${cats.map(c => `<option value="${esc(c)}"${c === it.category ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>` : ''}<label class="consent"><input type="checkbox" data-sld="${i}" ${it.available ? '' : 'checked'}> Agotado</label><label class="consent"><input type="checkbox" data-hid="${i}" ${it.hidden ? 'checked' : ''}> Ocultar del menú público</label></div>
-    <details><summary>Descripción</summary><textarea data-dsc="${i}" maxlength="200" rows="2" aria-label="Descripción del producto ${i + 1}">${esc(it.description)}</textarea></details>`; }).join('')}`).join('')
+    groups.forEach(g => catOf(g.c));
+    const catNames = groups.map(g => g.c);
+    box.innerHTML = groups.length ? groups.map(g => { const ci = catOf(g.c); return `
+    <div class="ecatbox" data-catbox="${esc(g.c)}">
+      <div class="ecat-top"><input class="eice" data-cat="${g.start}" value="${esc(g.c)}" maxlength="40" placeholder="Sin categoría" aria-label="Nombre de la categoría" style="flex:1;min-width:0"><span class="mute" style="flex:none">${g.rows.length} prod.</span></div>
+      <div class="ecat-foto">
+        <div class="ecat-prev">${ci.photo ? `<img src="${esc(ci.photo)}" alt="Foto de ${esc(g.c)}" onerror="this.parentNode.innerHTML='🖼️'">` : '🖼️'}</div>
+        <div class="ecat-foto-c">
+          <input class="eicemoji" data-catemo="${esc(g.c)}" value="${esc(ci.emoji || '')}" maxlength="8" placeholder="Emoji ☕" aria-label="Emoji de la categoría ${esc(g.c)}" style="max-width:96px;text-align:center">
+          <p class="mute">Foto de fondo de la categoría. Se ve grande arriba de los productos.</p>
+          <input type="file" accept="image/*" data-catfile="${esc(g.c)}" aria-label="Elegir foto de ${esc(g.c)}">
+          <div class="upbar" data-upbar="${esc(g.c)}"><i></i></div>
+          <button class="alt sm" data-catdel="${esc(g.c)}" ${ci.photo ? '' : 'hidden'}>Quitar foto</button>
+        </div>
+      </div>
+      <div class="ecat-actions" style="display:flex;gap:8px;margin-top:10px">
+        <button class="alt sm" data-ac="${esc(g.c)}">+ Agregar producto</button>
+      </div>
+      ${g.rows.map(r => { const it = r.x, i = r.i; return `
+      <div class="erow"><input class="eemoji" data-emo="${i}" value="${esc(it.emoji || '')}" maxlength="8" placeholder="🍔" aria-label="Emoji del producto ${i + 1}"><input class="eic" data-name="${i}" value="${esc(it.name)}" maxlength="80" aria-label="Nombre del producto ${i + 1}">
+      <input data-price="${i}" type="number" inputmode="decimal" step="any" min="0" value="${esc(it.price)}" aria-label="Precio del producto ${i + 1}">
+      <span class="ebtns"><button class="alt sm" data-up="${i}" aria-label="Subir el producto ${i + 1}">↑</button><button class="alt sm" data-dn="${i}" aria-label="Bajar el producto ${i + 1}">↓</button><button class="alt sm" data-del="${i}" aria-label="Eliminar el producto ${i + 1}">✕</button></span></div>
+      <div class="eopts">${catNames.length > 1 ? `<label class="consent"><span class="mute">Categoría:</span> <select data-mv="${i}" aria-label="Categoría del producto ${i + 1}">${catNames.map(c => `<option value="${esc(c)}"${c === it.category ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>` : ''}<label class="consent"><input type="checkbox" data-sld="${i}" ${it.available ? '' : 'checked'}> Agotado</label><label class="consent"><input type="checkbox" data-hid="${i}" ${it.hidden ? 'checked' : ''}> Ocultar del menú público</label></div>
+      <details><summary>Descripción</summary><textarea data-dsc="${i}" maxlength="200" rows="2" aria-label="Descripción del producto ${i + 1}">${esc(it.description)}</textarea></details>`; }).join('')}
+    </div>`; }).join('')
       : '<p class="mute">Todavía no hay productos. Empezá con “+ Nueva categoría”.</p>';
-    box.querySelectorAll('[data-cat]').forEach(el => el.onchange = () => { const i = +el.dataset.cat, old = items[i].category, nw = normCat(el.value); if (nw === old) { el.value = old; return; } items.forEach(x => { if (x.category === old) x.category = nw; }); setDirty(true); render(); });
+    box.querySelectorAll('[data-cat]').forEach(el => el.onchange = () => { const i = +el.dataset.cat, old = items[i].category, nw = normCat(el.value); if (nw === old) { el.value = old; return; } const ci = catOf(old); ci.name = nw; items.forEach(x => { if (x.category === old) x.category = nw; }); setDirty(true); render(); });
+    box.querySelectorAll('[data-catemo]').forEach(el => el.oninput = () => { catOf(el.dataset.catemo).emoji = el.value.slice(0, 8); setDirty(true); });
+    box.querySelectorAll('[data-catfile]').forEach(el => el.onchange = async () => {
+      const file = el.files && el.files[0]; if (!file) return;
+      const name = el.dataset.catfile, ci = catOf(name);
+      if (file.size > 5 * 1024 * 1024) { flash(mm, 'La foto es muy grande (máximo 5 MB). Probá con una más liviana.', false); el.value = ''; return; }
+      const bar = el.parentNode ? el.parentNode.querySelector('.upbar') : null, fill = bar && bar.firstElementChild;
+      if (bar) { bar.style.display = 'block'; if (fill) fill.style.width = '0%'; }
+      el.disabled = true;
+      try {
+        const url = await subirFoto(slug, pin, file, p => { if (fill) fill.style.width = p + '%'; });
+        ci.photo = url; setDirty(true);
+        await rpc('biz_cat_save', { p_slug: slug, p_pin: pin, p_items: cats.map((c, k) => ({ name: c.name, emoji: c.emoji || '', photo: c.photo || '', position: k })) });
+        flash(mm, 'Foto cargada. Se ve en el menú público.', true); render();
+      } catch (e) { flash(mm, e.message || 'No se pudo subir la foto', false); el.value = ''; }
+      finally { el.disabled = false; if (bar) bar.style.display = 'none'; }
+    });
+    box.querySelectorAll('[data-catdel]').forEach(el => el.onclick = async () => {
+      const name = el.dataset.catdel; if (!confirm('¿Quitar la foto de “' + name + '”?')) return;
+      catOf(name).photo = ''; setDirty(true);
+      try { await rpc('biz_cat_save', { p_slug: slug, p_pin: pin, p_items: cats.map((c, k) => ({ name: c.name, emoji: c.emoji || '', photo: c.photo || '', position: k })) }); } catch {}
+      render();
+    });
     box.querySelectorAll('[data-ac]').forEach(el => el.onclick = () => { const at = pushItem({ id: null, category: el.dataset.ac, name: '', description: '', price: 0, available: true, hidden: false, emoji: '' }); setDirty(true); render(); const f = box.querySelector('[data-name="' + at + '"]'); if (f) f.focus(); });
     box.querySelectorAll('[data-name]').forEach(el => el.oninput = () => { items[+el.dataset.name].name = el.value; setDirty(true); });
     box.querySelectorAll('[data-emo]').forEach(el => el.oninput = () => { items[+el.dataset.emo].emoji = el.value.slice(0, 8); setDirty(true); });
@@ -534,6 +599,7 @@ async function menuTab() {
     const b = document.getElementById('msv'); b.disabled = true;
     try {
       await rpc('biz_menu_save', { p_slug: slug, p_pin: pin, p_items: items.map(x => ({ id: x.id || null, category: x.category, name: x.name.trim(), description: x.description.trim(), price: Number(x.price) || 0, available: !!x.available, hidden: !!x.hidden, emoji: String(x.emoji || '').trim().slice(0, 8) })) });
+      await rpc('biz_cat_save', { p_slug: slug, p_pin: pin, p_items: cats.map((c, k) => ({ name: c.name, emoji: c.emoji || '', photo: c.photo || '', position: k })) });
       setDirty(false); flash(mm, 'Menú guardado', true); await reload();
     } catch (e) { flash(mm, e.message, false); }
     finally { b.disabled = false; }
@@ -573,10 +639,9 @@ async function menuTab() {
     setDirty(true); render();
     flash(mpmsg, ok + ' producto' + (ok === 1 ? '' : 's') + ' agregado' + (ok === 1 ? '' : 's') + (mal ? ' · ' + mal + ' línea' + (mal === 1 ? '' : 's') + ' descartada' + (mal === 1 ? '' : 's') : '') + '. Revisalos y guardá.', true);
   };
-  try { adopt(await rpc('biz_menu_list', { p_slug: slug, p_pin: pin })); render(); }
+  try { adopt(await rpc('biz_menu_list', { p_slug: slug, p_pin: pin })); await loadCats(); render(); }
   catch (e) { document.getElementById('mg').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
 }
-
 /* ---------------- ARRANQUE ---------------- */
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 legalFooter();

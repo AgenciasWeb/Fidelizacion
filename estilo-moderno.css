@@ -72,6 +72,45 @@ button:disabled{opacity:.55;cursor:not-allowed;filter:none!important}
 /* ---- Fondo con un toque de color del negocio ---- */
 body{background-image:radial-gradient(circle at 50% -18%,color-mix(in srgb,var(--ac) 16%,transparent),transparent 58%);background-attachment:fixed}
 
+/* ============================================================================
+   MENÚ VISUAL: cada categoría con su foto de fondo grande
+   ============================================================================ */
+
+/* ---- Portada de categoría (foto de fondo + nombre encima) ---- */
+.mcover{position:relative;overflow:hidden;border-radius:18px;margin:22px 0 12px;min-height:132px;display:flex;align-items:flex-end;background:linear-gradient(135deg,var(--ac),var(--ac2));box-shadow:0 16px 30px -18px rgba(0,0,0,.7);scroll-margin-top:12px}
+.mcover:first-child{margin-top:0}
+.mcover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.mcover::after{content:"";position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.78) 0%,rgba(0,0,0,.35) 46%,rgba(0,0,0,.05) 100%);pointer-events:none}
+.mcover-sign{position:relative;z-index:1;width:100%;padding:14px 16px;display:flex;align-items:center;gap:11px;color:#fff}
+.mcover-ico{width:42px;height:42px;flex:none;display:grid;place-items:center;font-size:23px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.35);border-radius:12px;backdrop-filter:blur(3px)}
+.mcover-t{min-width:0;font-size:23px;font-weight:800;letter-spacing:-.01em;text-shadow:0 2px 10px rgba(0,0,0,.6);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mcover-n{margin-left:auto;flex:none;font-size:12px;font-weight:800;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.38);border-radius:999px;padding:4px 11px;backdrop-filter:blur(3px)}
+.mcover.noimg{min-height:78px}
+.mcover.noimg .mcover-t{font-size:21px}
+
+/* ---- Fichas de producto más visuales ---- */
+.mlist{gap:11px}
+.mrow{border-radius:16px;padding:13px 15px;transition:transform .12s ease,box-shadow .12s ease}
+.mrow:hover{transform:translateY(-1px);box-shadow:0 8px 18px -12px rgba(0,0,0,.6)}
+.memoji{width:48px;height:48px;font-size:27px;background:linear-gradient(135deg,color-mix(in srgb,var(--ac) 12%,var(--bg)),var(--bg))}
+.mtxt b{font-size:16.5px}
+.mprice{box-shadow:0 5px 12px -8px color-mix(in srgb,var(--ac) 90%,transparent)}
+
+/* ---- Editor de categorías (foto) en el panel ---- */
+.ecatbox{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:14px;background:color-mix(in srgb,var(--line) 22%,var(--card))}
+.ecatbox:first-child{margin-top:0}
+.ecat-top{display:flex;gap:8px;align-items:center}
+.ecat-top .eic{flex:1;min-width:0}
+.ecat-foto{margin-top:9px;display:flex;gap:10px;align-items:flex-start}
+.ecat-prev{width:86px;height:64px;flex:none;border-radius:11px;border:1px dashed var(--line);background:var(--bg);display:grid;place-items:center;overflow:hidden;color:var(--mute);font-size:22px}
+.ecat-prev img{width:100%;height:100%;object-fit:cover}
+.ecat-foto-c{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.ecat-foto-c .mute{font-size:12px;margin:0}
+.ecat-foto-c button{margin:0;padding:9px 12px;font-size:13px}
+input[type=file]{font-size:13px}
+.upbar{height:6px;border-radius:999px;background:var(--line);overflow:hidden;display:none}
+.upbar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--ac),var(--ac2));transition:width .2s ease}
+
 /* ---- Modo oscuro: sombras y contrastes ---- */
 @media (prefers-color-scheme:dark){
   .bhero{box-shadow:0 18px 36px -20px rgba(0,0,0,.9)}
