@@ -549,13 +549,14 @@ async function menuView() {
   const tieneTarjeta = !!savedCards().find(([sl]) => sl === slug);
   const volver = tieneTarjeta ? `<a class="btn alt" style="display:block;margin-top:12px" href="?b=${encodeURIComponent(slug)}">🎴 Ver mi tarjeta de sellos</a>` : '';
   if (!biz.menu_enabled) {
-    $app.innerHTML = `${bhero('Menú', biz.name, 'Este negocio todavía no cargó su menú', '🍽️', true)}<div class="card"><p class="mute" style="margin:0">Este negocio no tiene menú publicado por ahora.</p></div>${volver}`;
+    $app.innerHTML = `${bhero('Menú', biz.name, 'Este negocio todavía no cargó su menú', '🍽️', true)}<div class="card"><p class="mute" style="margin:0">Este negocio no tiene menú publicado por ahora.</p></div>${installHtml('menus')}${volver}`;
     return;
   }
   $app.innerHTML = `${bhero('Menú', biz.name, '<span id="mu">Cargando menú…</span>', '🍽️')}
   <div class="card"><label for="mq">Buscar en el menú</label><input id="mq" type="search" autocomplete="off" placeholder="Ej: café, torta"></div>
   <div id="ml"></div>
   <div id="mcontacto"></div>
+  ${installHtml('menus')}
   <a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios</a>
   ${volver}`;
   const money = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2 });
