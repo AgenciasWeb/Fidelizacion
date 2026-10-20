@@ -125,9 +125,13 @@ if (!yaInstalada()) document.getElementById('inst').hidden = false;
 document.getElementById('ibtn').onclick = () => {
   const msg = document.getElementById('imsg');
   if (inst) { inst.prompt(); inst = null; msg.textContent = ''; return; }
-  msg.innerHTML = yaInstalada() ? 'Ya la tenés instalada.' : (esIOS()
+  if (yaInstalada()) { msg.textContent = 'Ya la tenés instalada.'; return; }
+  const pc = !esIOS() && !/android/i.test(navigator.userAgent);
+  msg.innerHTML = esIOS()
     ? 'Tocá <b>Compartir</b> (el cuadradito con la flecha) y elegí <b>“Agregar a pantalla de inicio”</b>.'
-    : 'Abrí el menú del navegador (⋮) y elegí <b>“Instalar aplicación”</b> o <b>“Agregar a pantalla de inicio”</b>.');
+    : pc
+      ? 'En <b>Chrome de la compu</b>: buscá el ícono de <b>instalar</b> a la derecha de la barra de direcciones (una pantallita con una flecha ↓). Si no lo ves, abrí el menú <b>⋮</b> y elegí <b>“Instalar aplicación”</b>.'
+      : 'Abrí el menú del navegador (⋮) y elegí <b>“Instalar aplicación”</b> o <b>“Agregar a pantalla de inicio”</b>.';
 };
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {});
 </script>

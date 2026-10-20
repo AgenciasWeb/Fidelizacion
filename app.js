@@ -312,7 +312,7 @@ const enPaginaApp = kind => location.pathname.replace(/\/(index\.html)?$/, '/').
 function pasosInstalar(kind) {
   if (esIOS()) return 'Tocá el botón <b>Compartir</b> (el cuadradito con la flecha hacia arriba) y elegí <b>“Agregar a pantalla de inicio”</b>.';
   if (esAndroid()) return 'Tocá el menú de los tres puntos (⋮) y elegí <b>“Instalar aplicación”</b> (o “Agregar a pantalla de inicio”).';
-  if (esEscritorio()) return 'En <b>Chrome de la compu</b>: mirá a la derecha de la barra de direcciones, donde está el ícono de <b>instalar</b> (una pantallita con una flecha ↓). Si no lo ves, abrí el menú <b>⋮</b> (arriba a la derecha) y elegí <b>“Instalar Fidelización”</b> o <b>“Instalar aplicación”</b>. Se abre como una ventana propia, como si fuera un programa.';
+  if (esEscritorio()) return 'En <b>Chrome de la compu</b>: buscá el ícono de <b>instalar</b> a la derecha de la barra de direcciones (una pantallita con una flecha ↓) y tocalo. Si no lo ves, abrí el menú <b>⋮</b> (arriba a la derecha) y elegí <b>“Instalar Fidelización”</b> o <b>“Instalar aplicación”</b>. También podés elegir <b>“Crear acceso directo”</b>. Se abre en su propia ventana, como un programa.';
   return 'Abrí el menú del navegador (⋮ en Chrome, o Compartir en Safari) y elegí <b>“Instalar aplicación”</b>.';
 }
 function installApp(btn) {
@@ -320,9 +320,10 @@ function installApp(btn) {
   const msg = btn.parentElement.querySelector('[data-imsg]');
   /* Si el navegador ya nos dio su propio aviso de instalación, lo usamos. */
   if (inst) { inst.prompt(); inst = null; if (msg) msg.innerHTML = ''; return; }
-  /* Si no estamos en la página propia de la app, vamos ahí: es donde el
-     navegador ofrece instalar la app correcta. */
-  if (!enPaginaApp(kind)) { location.href = paginaApp(kind); return; }
+  /* La página raíz ES la app "Mis tarjetas" (tiene su propio manifest), así que
+     ahí mostramos cómo instalarla sin mandar a otra página. */
+  const enRaiz = location.pathname.replace(/\/(index\.html)?$/, '/').endsWith('/Fidelizacion/');
+  if (!(kind === 'card' && enRaiz) && !enPaginaApp(kind)) { location.href = paginaApp(kind); return; }
   if (msg) msg.innerHTML = pasosInstalar(kind);
 }
 function installHtml(kind) {

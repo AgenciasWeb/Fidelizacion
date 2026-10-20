@@ -48,11 +48,18 @@ button:not(.alt):active{transform:scale(.985)}
   var btn = document.getElementById('inst'), ayuda = document.getElementById('ayuda');
   var ev = null;
   addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); ev = e; btn.hidden = false; });
+  /* En Chrome de computadora el aviso automático casi nunca aparece: mostramos
+     igual el botón para que la persona vea cómo instalarla. */
+  if (!(matchMedia('(display-mode: standalone)').matches || navigator.standalone)) btn.hidden = false;
   btn.onclick = function () {
     if (ev) { ev.prompt(); ev = null; btn.hidden = true; return; }
     ayuda.hidden = false;
-    ayuda.innerHTML = 'Tocá el menú del navegador (⋮ en Android, o <b>Compartir</b> en iPhone) y elegí <b>“Instalar aplicación”</b> o <b>“Agregar a pantalla de inicio”</b>.';
+    var pc = !/iphone|ipad|ipod|android/i.test(navigator.userAgent);
+    ayuda.innerHTML = pc
+      ? 'En <b>Chrome de la compu</b>: mirá a la derecha de la barra de direcciones, donde está el ícono de <b>instalar</b> (una pantallita con una flecha ↓). Si no lo ves, abrí el menú <b>⋮</b> y elegí <b>“Instalar aplicación”</b>. Se abre en su propia ventana, como un programa.'
+      : 'Tocá el menú del navegador (⋮ en Android, o <b>Compartir</b> en iPhone) y elegí <b>“Instalar aplicación”</b> o <b>“Agregar a pantalla de inicio”</b>.';
   };
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { scope: './' }).catch(function () {});
   if (matchMedia('(display-mode: standalone)').matches || navigator.standalone) location.replace('../?mis-tarjetas');
 </script>
 </body>
