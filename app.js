@@ -100,6 +100,21 @@ function stampsGrid(n, on, emoji, tiers, rEmoji) {
 }
 
 /* ---------------- CLIENTE ---------------- */
+/* Le muestra al cliente hace cuánto vino por última vez y cuántas visitas
+   lleva. Ayuda a que vuelva antes y a que se sienta valorado. */
+function visitaHtml(c) {
+  if (c.last_days === null || c.last_days === undefined) return '';
+  const d = c.last_days, v = c.visits || 0;
+  let cuando;
+  if (d <= 0) cuando = 'Hoy';
+  else if (d === 1) cuando = 'Ayer';
+  else cuando = 'Hace ' + d + ' días';
+  const linea = d <= 0
+    ? '✅ Viniste hoy. ¡Gracias!'
+    : '🕒 Última visita: ' + cuando + ' (' + esc(c.last_date) + ')';
+  const visitas = v > 0 ? '<p class="mute" style="text-align:center;margin:6px 0 0">🎉 Ya viniste <b>' + v + '</b> ve' + (v === 1 ? 'z' : 'ces') + ' en total.</p>' : '';
+  return '<p class="mute" style="text-align:center;margin:12px 0 0">' + linea + '</p>' + visitas;
+}
 async function customerView() {
   legalFooter();
   const saved = localStorage.getItem('code_' + slug);
@@ -147,7 +162,8 @@ async function customerView() {
       <p class="prog-t"><span>${c.stamps} de ${biz.stamps_needed} sellos</span><span class="mute">${done ? '¡Listo!' : 'Faltan ' + left}</span></p>
       <p class="mute" style="text-align:center;margin-top:10px">${done ? esc(biz.ready_msg || '¡Completaste la tarjeta! Mostrala para canjear') + ': ' : 'Tu premio: '}${esc(biz.reward_emoji || '🎁')} ${esc(biz.reward)}</p>
       ${(biz.tiers || []).map(t => '<p class="mute" style="margin:4px 0;text-align:center">🎁 Sello ' + t.at + ': ' + esc(t.reward) + (c.stamps >= t.at ? ((c.claimed || []).includes(t.at) ? ' ✔ canjeado' : ' · ¡listo para canjear!') : '') + '</p>').join('')}
-      ${c.expires && c.stamps > 0 && !done ? '<p class="mute" style="text-align:center;margin:8px 0 0">⏳ Tus sellos vencen el ' + esc(c.expires) + '</p>' : ''}</div>
+      ${c.expires && c.stamps > 0 && !done ? '<p class="mute" style="text-align:center;margin:8px 0 0">⏳ Tus sellos vencen el ' + esc(c.expires) + '</p>' : ''}
+      ${visitaHtml(c)}</div>
       <div class="card"><p class="mute" style="text-align:center;margin:0 0 4px">Mostrá este código al negocio para sumar un sello</p>
       <div class="qr" role="img" aria-label="Código QR de tu tarjeta de ${esc(biz.name)}. Tu código es ${esc(c.code)}">${qr(c.code)}</div><div class="code">${esc(c.code)}</div>
       <p class="mute" style="text-align:center;margin:12px 0 0">Premios canjeados: ${c.rewards}</p></div>${bizData()}${links()}
@@ -307,7 +323,10 @@ document.addEventListener('click', e => { const b = e.target.closest && e.target
 function links() {
   const mn = (biz && biz.menu_enabled) ? `<a class="btn alt" style="display:block;margin-top:12px" href="?b=${encodeURIComponent(slug)}&menu=1">🍽️ Ver el menú</a>` : '';
   const sig = installHtml('card');
-  return `<div class="card">${sig}${sig ? '<p class="mute" style="text-align:center;margin:14px 0 0">o</p>' : ''}${mn}<a class="btn alt" style="display:block;margin-top:12px" href="?mis-tarjetas">🎴 Ver todas mis tarjetas</a><a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios</a></div>`;
+  const url = location.origin + location.pathname + '?b=' + encodeURIComponent(slug);
+  const invit = `¡${biz.name} te regala premios! 🎁 Juntá ${biz.stamps_needed} sellos y llevate ${biz.reward_emoji || '🎁'} ${biz.reward}. Sacá tu tarjeta acá 👉 ${url}`;
+  const invita = `<a class="btn alt" style="display:block;margin-top:12px" href="https://wa.me/?text=${encodeURIComponent(invit)}" target="_blank" rel="noopener noreferrer">💬 Invitar a un amigo</a>`;
+  return `<div class="card">${sig}${sig ? '<p class="mute" style="text-align:center;margin:14px 0 0">o</p>' : ''}${mn}<a class="btn alt" style="display:block;margin-top:12px" href="?mis-tarjetas">🎴 Ver todas mis tarjetas</a><a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios</a>${invita}</div>`;
 }
 function bizData() {
   if (!biz || (!biz.address && !biz.phone && !biz.email)) return '';
@@ -559,18 +578,21 @@ async function menuView() {
     }
     catch (e) { const b = document.getElementById('ml'); if (b) b.innerHTML = `<div class="card"><div class="msg err" style="margin:0">${esc(e.message)}</div></div>`; }
   };
-  /* Datos de contacto del negocio: WhatsApp y llamar. El teléfono viene del menú. */
+  /* Datos de contacto del negocio: WhatsApp y llamar. El teléfono viene del menú.
+     Siempre incluye "Invitar a un amigo", aunque el negocio no haya cargado teléfono. */
   const contacto = () => {
     const box = document.getElementById('mcontacto');
     if (!box || !data) return;
     const tel = String(data.phone || '').trim();
-    if (!tel) { box.innerHTML = ''; return; }
-    const num = waNum(tel);
+    const num = tel ? waNum(tel) : '';
     const dir = String(data.address || '').trim();
-    const msg = 'Hola ' + biz.name + '! Vi el menú y quería consultar.';
-    box.innerHTML = `<div class="card"><h2>¿Querés pedir o consultar?</h2>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="https://wa.me/${esc(num)}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener noreferrer">💬 Escribir por WhatsApp</a><a class="btn alt" href="tel:${esc(num)}">📞 Llamar</a></div>
-      ${dir ? `<p class="mute" style="margin:10px 0 0">📍 ${esc(dir)}</p>` : ''}</div>`;
+    const url = location.origin + location.pathname + '?b=' + encodeURIComponent(slug);
+    const invit = `¡${biz.name} te regala premios! 🎁 Juntá ${biz.stamps_needed} sellos y llevate ${biz.reward_emoji || '🎁'} ${biz.reward}. Sacá tu tarjeta acá 👉 ${url}`;
+    const invita = `<a class="btn alt" style="display:block;margin-top:10px" href="https://wa.me/?text=${encodeURIComponent(invit)}" target="_blank" rel="noopener noreferrer">💬 Invitar a un amigo</a>`;
+    const pedir = num ? `<h2>¿Querés pedir o consultar?</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="https://wa.me/${esc(num)}?text=${encodeURIComponent('Hola ' + biz.name + '! Vi el menú y quería consultar.')}" target="_blank" rel="noopener noreferrer">💬 Escribir por WhatsApp</a><a class="btn alt" href="tel:${esc(num)}">📞 Llamar</a></div>
+      ${dir ? `<p class="mute" style="margin:10px 0 0">📍 ${esc(dir)}</p>` : ''}` : `<h2>¿Te gustó?</h2>${dir ? `<p class="mute" style="margin:0 0 10px">📍 ${esc(dir)}</p>` : '<p class="mute" style="margin:0 0 10px">Invitá a un amigo a conocer este lugar.</p>'}`;
+    box.innerHTML = `<div class="card">${pedir}${invita}</div>`;
   };
   const mqEl = document.getElementById('mq');
   if (mqEl) mqEl.oninput = render;
