@@ -250,9 +250,9 @@ function installHtml(kind) {
 }
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-inst]'); if (b) installApp(b); });
 function links() {
-  const mn = (biz && biz.menu_enabled) ? `<a class="btn alt" style="display:block;margin-top:12px" href="?b=${encodeURIComponent(slug)}&menu=1">Ver menú</a>` : '';
+  const mn = (biz && biz.menu_enabled) ? `<a class="btn alt" style="display:block;margin-top:12px" href="?b=${encodeURIComponent(slug)}&menu=1">🍽️ Ver el menú</a>` : '';
   const sig = installHtml('card');
-  return `<div class="card">${sig}${sig ? '<p class="mute" style="text-align:center;margin:14px 0 0">o</p>' : ''}<a class="btn alt" style="display:block;margin-top:12px" href="?mis-tarjetas">Ver todas mis tarjetas</a></div>`;
+  return `<div class="card">${sig}${sig ? '<p class="mute" style="text-align:center;margin:14px 0 0">o</p>' : ''}${mn}<a class="btn alt" style="display:block;margin-top:12px" href="?mis-tarjetas">🎴 Ver todas mis tarjetas</a></div>`;
 }
 function bizData() {
   if (!biz || (!biz.address && !biz.phone && !biz.email)) return '';
@@ -314,7 +314,8 @@ async function walletView() {
   const rows = await Promise.all(list.map(async ([sl, code]) => {
     try {
       const [b, c] = await Promise.all([rpc('get_business', { p_slug: sl }), rpc('get_card', { p_slug: sl, p_code: code })]);
-      return b && c ? { sl, b, c } : { sl, gone: true };
+      if (b && c) { let menu = false; try { menu = !!(await rpc('get_features', { p_slug: sl }))?.menu; } catch {} b.menu_enabled = menu; return { sl, b, c }; }
+      return { sl, gone: true };
     } catch { return { sl, err: true }; }
   }));
   w.innerHTML = rows.map(r => {
@@ -322,7 +323,7 @@ async function walletView() {
     if (r.gone || r.err) card = `<div class="card" style="margin:0"><b>${esc(r.sl)}</b><p class="mute" style="margin:6px 0 0">${r.gone ? 'Esta tarjeta ya no existe.' : 'No se pudo cargar. Revisá tu conexión.'}</p></div>`;
     else {
       const col = hexOk(r.b.color) ? r.b.color : '#c2410c', col2 = hexOk(r.b.color2) ? r.b.color2 : col, left = r.b.stamps_needed - r.c.stamps;
-      card = `<a class="wcard" href="?b=${encodeURIComponent(r.sl)}" style="background:linear-gradient(135deg,${col},${col2});color:${textOn(mixHex(col, col2))}"><b>${esc(r.b.name)}</b><span>${r.c.stamps} de ${r.b.stamps_needed} sellos</span><small>${left <= 0 ? '¡Premio listo! ' : 'Te faltan ' + left + ' · '}${esc(r.b.reward_emoji || '🎁')} ${esc(r.b.reward)}</small></a>`;
+      card = `<a class="wcard" href="?b=${encodeURIComponent(r.sl)}" style="background:linear-gradient(135deg,${col},${col2});color:${textOn(mixHex(col, col2))}"><b>${esc(r.b.name)}</b><span>${r.c.stamps} de ${r.b.stamps_needed} sellos</span><small>${left <= 0 ? '¡Premio listo! ' : 'Te faltan ' + left + ' · '}${esc(r.b.reward_emoji || '🎁')} ${esc(r.b.reward)}</small></a>` + (r.b.menu_enabled ? `<a class="btn alt sm" style="display:block;margin:8px 0 0" href="?b=${encodeURIComponent(r.sl)}&menu=1">🍽️ Ver el menú de ${esc(r.b.name)}</a>` : '');
     }
     return card + `<div class="wrm"><button class="alt sm" data-rm="${esc(r.sl)}">Quitar de este celular</button></div>`;
   }).join('');
