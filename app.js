@@ -518,7 +518,7 @@ async function menuView() {
   <div class="card"><label for="mq">Buscar en el menú</label><input id="mq" type="search" autocomplete="off" placeholder="Ej: café, torta"></div>
   <div id="ml"></div>
   <div id="mcontacto"></div>
-  <p class="mute" style="text-align:center;margin:16px 0 0"><a href="menus/">🍽️ Ver los menús de otros negocios</a></p>
+  <a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios</a>
   ${volver}`;
   const money = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2 });
   let data = null, last = 0;
@@ -608,6 +608,24 @@ async function menuTab() {
   const normCat = s => String(s ?? '').trim().slice(0, 40);
   const regroup = arr => { const g = [], ix = {}; arr.forEach(x => { const c = x.category || ''; if (!(c in ix)) { ix[c] = g.length; g.push([]); } g[ix[c]].push(x); }); return [].concat(...g); };
   const pushItem = it => { let last = -1; items.forEach((x, i) => { if (x.category === it.category) last = i; }); const at = last < 0 ? items.length : last + 1; items.splice(at, 0, it); return at; };
+  /* Marca un producto como "recién agregado" para que se resalte y se vea. */
+  const marcarNuevo = (i, cat) => {
+    items.forEach(x => { delete x.__nuevo; });
+    if (items[i]) items[i].__nuevo = cat;
+  };
+  /* Agrega un producto, lo resalta, hace scroll hasta él y lo deja listo para
+     escribir el nombre. Así el negocio ve claramente qué acaba de agregar. */
+  const agregarProducto = cat => {
+    const at = pushItem({ id: null, category: cat, name: '', description: '', price: 0, available: true, hidden: false, emoji: '', featured: false, price_note: '' });
+    marcarNuevo(at, cat);
+    setDirty(true); render();
+    const el = document.querySelector('.eprod[data-prod="' + at + '"]');
+    if (el) {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      const f = el.querySelector('[data-name]'); if (f) setTimeout(() => f.focus(), 120);
+    }
+    flash(mm, 'Producto agregado a “' + (cat || 'Sin categoría') + '”. Escribile el nombre.', true);
+  };
   const setDirty = d => { menuDirty = d; const el = document.getElementById('mdy'); if (el) el.hidden = !d; };
   const updLine = () => { mt.textContent = 'Última actualización: ' + (updated ? new Date(updated).toLocaleString('es-AR') : '—'); };
   const catOf = n => { const c = cats.find(x => x.name === n); if (c) return c; const nn = { name: n, emoji: '', photo: '' }; cats.push(nn); return nn; };
@@ -655,12 +673,19 @@ async function menuTab() {
       <div class="ecat-actions" style="display:flex;gap:8px;margin-top:10px">
         <button class="alt sm" data-ac="${esc(g.c)}">+ Agregar producto</button>
       </div>
-      ${g.rows.map(r => { const it = r.x, i = r.i; return `
-      <div class="erow"><input class="eemoji" data-emo="${i}" value="${esc(it.emoji || '')}" maxlength="8" placeholder="🍔" aria-label="Emoji del producto ${i + 1}"><input class="eic" data-name="${i}" value="${esc(it.name)}" maxlength="80" aria-label="Nombre del producto ${i + 1}">
-      <input data-price="${i}" type="number" inputmode="decimal" step="any" min="0" value="${esc(it.price)}" aria-label="Precio del producto ${i + 1}" ${it.price_note ? 'disabled' : ''} title="${it.price_note ? 'Reemplazado por: ' + esc(it.price_note) : 'Precio'}">
-      <span class="ebtns"><button class="alt sm" data-up="${i}" aria-label="Subir el producto ${i + 1}">↑</button><button class="alt sm" data-dn="${i}" aria-label="Bajar el producto ${i + 1}">↓</button><button class="alt sm" data-del="${i}" aria-label="Eliminar el producto ${i + 1}">✕</button></span></div>
-      <div class="eopts">${catNames.length > 1 ? `<label class="consent"><span class="mute">Categoría:</span> <select data-mv="${i}" aria-label="Categoría del producto ${i + 1}">${catNames.map(c => `<option value="${esc(c)}"${c === it.category ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>` : ''}<label class="consent"><input type="checkbox" data-sld="${i}" ${it.available ? '' : 'checked'}> Agotado por ahora</label><label class="consent"><input type="checkbox" data-hid="${i}" ${it.hidden ? 'checked' : ''}> Ocultar (no se ve nunca)</label><label class="consent"><input type="checkbox" data-ft="${i}" ${it.featured ? 'checked' : ''}> ⭐ Destacado</label></div>
-      <details><summary>Descripción y precio especial</summary><textarea data-dsc="${i}" maxlength="200" rows="2" aria-label="Descripción del producto ${i + 1}">${esc(it.description)}</textarea><input data-pnote="${i}" maxlength="20" value="${esc(it.price_note || '')}" placeholder="En vez de precio, ej: Consultar" aria-label="Texto del precio del producto ${i + 1}"></details>`; }).join('')}
+      ${g.rows.map(r => { const it = r.x, i = r.i; const esNuevo = (r.x.__nuevo ? ' nuevo' : ''); return `
+      <div class="eprod${esNuevo}" data-prod="${i}">
+        <div class="erow">
+          <input class="eemoji" data-emo="${i}" value="${esc(it.emoji || '')}" maxlength="8" placeholder="🍔" aria-label="Emoji del producto ${i + 1}">
+          <input class="eic" data-name="${i}" value="${esc(it.name)}" maxlength="80" placeholder="Nombre del producto (ej: Café con leche)" aria-label="Nombre del producto ${i + 1}">
+          <span class="ebtns"><button class="alt sm" data-up="${i}" aria-label="Subir el producto ${i + 1}" title="Subir">↑</button><button class="alt sm" data-dn="${i}" aria-label="Bajar el producto ${i + 1}" title="Bajar">↓</button><button class="alt sm" data-del="${i}" aria-label="Eliminar el producto ${i + 1}" title="Eliminar">✕</button></span>
+        </div>
+        <div class="erow-d">
+          <label class="consent" style="margin:0;flex:1;min-width:0"><span class="mute" style="flex:none">$ Precio:</span> <input data-price="${i}" type="number" inputmode="decimal" step="any" min="0" value="${esc(it.price)}" aria-label="Precio del producto ${i + 1}" ${it.price_note ? 'disabled' : ''} title="${it.price_note ? 'Reemplazado por: ' + esc(it.price_note) : 'Precio'}"></label>
+        </div>
+        <div class="eopts">${catNames.length > 1 ? `<label class="consent"><span class="mute">Categoría:</span> <select data-mv="${i}" aria-label="Categoría del producto ${i + 1}">${catNames.map(c => `<option value="${esc(c)}"${c === it.category ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>` : ''}<label class="consent"><input type="checkbox" data-sld="${i}" ${it.available ? '' : 'checked'}> Agotado por ahora</label><label class="consent"><input type="checkbox" data-hid="${i}" ${it.hidden ? 'checked' : ''}> Ocultar (no se ve nunca)</label><label class="consent"><input type="checkbox" data-ft="${i}" ${it.featured ? 'checked' : ''}> ⭐ Destacado</label></div>
+        <details><summary>Descripción y precio especial</summary><textarea data-dsc="${i}" maxlength="200" rows="2" aria-label="Descripción del producto ${i + 1}" placeholder="Ej: en taza grande, con leche cremosa">${esc(it.description)}</textarea><input data-pnote="${i}" maxlength="20" value="${esc(it.price_note || '')}" placeholder="En vez de precio, ej: Consultar" aria-label="Texto del precio del producto ${i + 1}"></details>
+      </div>`; }).join('')}
     </div>`; }).join('')
       : '<p class="mute">Todavía no hay productos. Empezá con “+ Nueva categoría”.</p>';
     box.querySelectorAll('[data-cat]').forEach(el => el.onchange = () => {
@@ -704,7 +729,7 @@ async function menuTab() {
       try { await rpc('biz_cat_save', { p_slug: slug, p_pin: pin, p_items: cats.map((c, k) => ({ name: c.name, emoji: c.emoji || '', photo: c.photo || '', position: k })) }); } catch {}
       render();
     });
-    box.querySelectorAll('[data-ac]').forEach(el => el.onclick = () => { const at = pushItem({ id: null, category: el.dataset.ac, name: '', description: '', price: 0, available: true, hidden: false, emoji: '', featured: false, price_note: '' }); setDirty(true); render(); const f = box.querySelector('[data-name="' + at + '"]'); if (f) f.focus(); });
+    box.querySelectorAll('[data-ac]').forEach(el => el.onclick = () => agregarProducto(el.dataset.ac));
     box.querySelectorAll('[data-name]').forEach(el => el.oninput = () => { items[+el.dataset.name].name = el.value; setDirty(true); });
     box.querySelectorAll('[data-emo]').forEach(el => el.oninput = () => { items[+el.dataset.emo].emoji = el.value.slice(0, 8); setDirty(true); });
     box.querySelectorAll('[data-price]').forEach(el => el.oninput = () => { items[+el.dataset.price].price = Number(el.value); setDirty(true); });
@@ -726,6 +751,11 @@ async function menuTab() {
     box.querySelectorAll('[data-del]').forEach(el => el.onclick = () => { const i = +el.dataset.del; if (!confirm('¿Eliminar “' + (items[i].name || 'producto sin nombre') + '” del menú? Se borra cuando guardás.')) return; items.splice(i, 1); setDirty(true); render(); });
     box.querySelectorAll('[data-up]').forEach(el => el.onclick = () => { const i = +el.dataset.up; if (i > 0 && items[i - 1].category === items[i].category) { const t = items[i - 1]; items[i - 1] = items[i]; items[i] = t; setDirty(true); render(); } });
     box.querySelectorAll('[data-dn]').forEach(el => el.onclick = () => { const i = +el.dataset.dn; if (i < items.length - 1 && items[i + 1].category === items[i].category) { const t = items[i + 1]; items[i + 1] = items[i]; items[i] = t; setDirty(true); render(); } });
+    /* El resaltado de "recién agregado" dura un momento y se apaga solo. */
+    if (items.some(x => x.__nuevo)) setTimeout(() => {
+      items.forEach(x => { delete x.__nuevo; });
+      document.querySelectorAll('.eprod.nuevo').forEach(el => el.classList.remove('nuevo'));
+    }, 2600);
   };
   document.getElementById('mnc').onclick = () => {
     const c = prompt('Nombre de la nueva categoría');
@@ -733,9 +763,9 @@ async function menuTab() {
     const nc = normCat(c);
     if (!nc) return flash(mm, 'Escribí un nombre para la categoría', false);
     if (nc.length > 40) return flash(mm, 'La categoría no puede superar los 40 caracteres', false);
-    const at = pushItem({ id: null, category: nc, name: '', description: '', price: 0, available: true, hidden: false, emoji: '', featured: false, price_note: '' });
-    setDirty(true); render();
-    const f = document.querySelector('#mg [data-name="' + at + '"]'); if (f) f.focus();
+    if (cats.some(c => c.name === nc)) return flash(mm, 'Ya tenés una categoría con ese nombre', false);
+    catOf(nc);
+    agregarProducto(nc);
   };
   document.getElementById('msv').onclick = async () => {
     if (!items.length && !confirm('¿Guardar el menú vacío? Se van a borrar todos los productos.')) return;

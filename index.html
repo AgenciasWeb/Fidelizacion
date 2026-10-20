@@ -104,7 +104,8 @@ details summary{cursor:pointer;color:var(--mute);font-size:14px;margin-top:8px}
 .mrow.sold .mprice{background:var(--line);color:var(--mute)}
 .badge{display:inline-block;padding:2px 8px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em}
 @media (prefers-color-scheme:dark){.badge{background:#450a0a;color:#fca5a5}}
-.erow{display:flex;gap:8px;align-items:center;margin-top:8px}
+/* ---- Editor de productos: cada producto es una tarjeta, el nombre bien grande ---- */
+.erow{display:flex;gap:8px;align-items:center;margin-top:12px}
 .erow .eic{flex:1;min-width:0}
 .erow .eemoji{width:58px;flex:none;text-align:center;padding:8px 4px;font-size:19px}
 .erow input[type=number]{width:32%;min-width:76px}
@@ -113,6 +114,25 @@ details summary{cursor:pointer;color:var(--mute);font-size:14px;margin-top:8px}
 .eopts{display:flex;flex-wrap:wrap;gap:14px}
 .eopts label.consent{margin:0;align-items:center}
 .eopts select{width:auto;max-width:150px;padding:5px 6px;font-size:13px}
+/* Cada producto se ve como una tarjeta con el nombre grande y destacado */
+.eprod{border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:12px;background:var(--card)}
+.eprod:first-child{margin-top:0}
+.eprod .erow{margin-top:0}
+.eprod .erow .eic{font-size:17px;font-weight:700;padding:11px 12px}
+.eprod .erow .eemoji{width:52px;font-size:22px}
+.eprod .erow input[type=number]{width:auto;flex:1;min-width:0;font-size:16px;font-weight:700;padding:11px 12px}
+.eprod .eopts{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.eprod details{margin-top:8px}
+.eprod summary{font-size:13.5px;color:var(--mute);cursor:pointer;padding:4px 0}
+.eprod details textarea{margin-top:8px;width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit;font-size:15px;resize:vertical}
+.eprod details input{margin-top:8px}
+.erow-d {display:flex;gap:8px;align-items:center;margin-top:8px}
+.erow-n {display:flex;gap:8px;align-items:center}
+/* Aviso de "recién agregado": se resalta y se ve solo */
+@keyframes nuevo {0%{box-shadow:0 0 0 3px color-mix(in srgb,var(--ac) 55%,transparent)}100%{box-shadow:0 0 0 0 transparent}}
+.eprod.nuevo{animation:nuevo 1.6s ease-out;border-color:color-mix(in srgb,var(--ac) 65%,var(--line));background:color-mix(in srgb,var(--ac) 7%,var(--card))}
+.eprod .malo{border-color:#dc2626}
+.marcanuevo{display:inline-block;margin-left:6px;font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:linear-gradient(135deg,var(--ac),var(--ac2));color:#fff}
 .ecat{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:16px}
 .ecat:first-child{margin-top:0}
 .tabs.t5{gap:4px}
