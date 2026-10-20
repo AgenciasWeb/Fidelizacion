@@ -100,8 +100,7 @@ async function customerView() {
       <div class="card"><p class="mute" style="text-align:center;margin:0 0 4px">Mostrá este código al negocio para sumar un sello</p>
       <div class="qr" role="img" aria-label="Código QR de tu tarjeta de ${esc(biz.name)}. Tu código es ${esc(c.code)}">${qr(c.code)}</div><div class="code">${esc(c.code)}</div>
       <p class="mute" style="text-align:center;margin:12px 0 0">Premios canjeados: ${c.rewards}</p></div>${bizData()}${links()}
-      <p class="legal" style="text-align:center;margin-top:8px"><a href="#" id="del">Borrar mi tarjeta y mis datos</a></p><div id="dm" aria-live="polite"></div>
-      ${biz.menu_enabled ? '<p class="legal" style="text-align:center;margin-top:6px"><a href="?b=' + encodeURIComponent(slug) + '&panel=1&tab=menu">Soy el dueño: editar el menú</a></p>' : ''}`;
+      <p class="legal" style="text-align:center;margin-top:8px"><a href="#" id="del">Borrar mi tarjeta y mis datos</a></p><div id="dm" aria-live="polite"></div>`;
       document.getElementById('del').onclick = async e => {
         e.preventDefault();
         if (!confirm('¿Borrar tu tarjeta de ' + biz.name + '? Se eliminan tu nombre, teléfono y todos tus sellos. No se puede deshacer.')) return;
@@ -414,7 +413,7 @@ async function menuView() {
     $app.innerHTML = `<h1>${esc(biz.name)}</h1><div class="card"><p class="mute" style="margin:0">Este negocio no tiene menú.</p></div><a class="btn alt" style="display:block" href="?b=${encodeURIComponent(slug)}">Ver mi tarjeta de sellos</a>`;
     return;
   }
-  $app.innerHTML = `<div class="mhero"><span class="mhero-ico" aria-hidden="true">🍽️</span><p class="mhero-k">Menú</p><h1>${esc(biz.name)}</h1><p class="mhero-u" id="mu">Cargando menú…</p></div>
+  $app.innerHTML = `${bhero('Menú', biz.name, '<span id="mu">Cargando menú…</span>', '🍽️')}
   <div class="card"><label for="mq">Buscar en el menú</label><input id="mq" type="search" autocomplete="off" placeholder="Ej: café, torta"></div>
   <div id="ml"></div>
   <a class="btn alt" style="display:block" href="?b=${encodeURIComponent(slug)}">Ver mi tarjeta de sellos</a>`;
