@@ -43,6 +43,11 @@ main{max-width:520px;margin:0 auto;padding:22px 16px 48px}
 .neg-cta{display:inline-block;margin-top:11px;padding:11px 16px;border-radius:12px;background:linear-gradient(135deg,var(--nc,var(--ac)),var(--nc2,var(--ac2)));color:#fff;font-weight:700;font-size:14.5px}
 .cargando,.vacio{padding:26px 16px;text-align:center;color:var(--mute);border:1px dashed var(--line);border-radius:16px;background:var(--card)}
 .pie{margin:22px 0 0;text-align:center;font-size:12.5px;color:var(--mute)}
+.instbox{margin:18px 0 0;padding:14px;border:1px solid var(--line);border-radius:16px;background:var(--card);text-align:center}
+.instbox button{width:100%;padding:13px 16px;border:0;border-radius:12px;background:linear-gradient(135deg,var(--ac),var(--ac2));color:#fff;font:inherit;font-weight:700;cursor:pointer}
+.instbox p{margin:8px 0 0;font-size:13px;color:var(--mute)}
+.volver{display:block;margin:18px 0 0;padding:13px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);font-weight:700;text-align:center;text-decoration:none;font-size:14.5px}
+.volver:active{transform:translateY(1px)}
 @media (prefers-reduced-motion:reduce){.neg{transition:none}.neg:hover{transform:none}}
 </style>
 </head>
@@ -56,6 +61,8 @@ main{max-width:520px;margin:0 auto;padding:22px 16px 48px}
 </header>
 <div class="buscar"><input id="q" type="search" autocomplete="off" placeholder="Buscar negocio o plato" aria-label="Buscar negocio o plato"></div>
 <div id="lista" class="nlist"><div class="cargando">Cargando menús…</div></div>
+<div class="instbox" id="inst" hidden><button id="ibtn">📲 Instalar la app Menús de la zona</button><p>Los menús de los negocios, como app en tu celular.</p><p id="imsg" aria-live="polite"></p></div>
+<a class="volver" href="../tarjetas/">🎴 Ver todas mis tarjetas</a>
 <p class="pie" id="pie">Actualizado automáticamente.</p>
 </main>
 <script>
@@ -109,6 +116,19 @@ async function cargar() {
 }
 $q.oninput = () => { clearTimeout(timer); timer = setTimeout(cargar, 220); };
 cargar();
+/* ---- Instalar la app (independiente del resto) ---- */
+const yaInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const esIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let inst = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); inst = e; });
+if (!yaInstalada()) document.getElementById('inst').hidden = false;
+document.getElementById('ibtn').onclick = () => {
+  const msg = document.getElementById('imsg');
+  if (inst) { inst.prompt(); inst = null; msg.textContent = ''; return; }
+  msg.innerHTML = yaInstalada() ? 'Ya la tenés instalada.' : (esIOS()
+    ? 'Tocá <b>Compartir</b> (el cuadradito con la flecha) y elegí <b>“Agregar a pantalla de inicio”</b>.'
+    : 'Abrí el menú del navegador (⋮) y elegí <b>“Instalar aplicación”</b> o <b>“Agregar a pantalla de inicio”</b>.');
+};
 </script>
 </body>
 </html>

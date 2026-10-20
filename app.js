@@ -307,7 +307,7 @@ document.addEventListener('click', e => { const b = e.target.closest && e.target
 function links() {
   const mn = (biz && biz.menu_enabled) ? `<a class="btn alt" style="display:block;margin-top:12px" href="?b=${encodeURIComponent(slug)}&menu=1">🍽️ Ver el menú</a>` : '';
   const sig = installHtml('card');
-  return `<div class="card">${sig}${sig ? '<p class="mute" style="text-align:center;margin:14px 0 0">o</p>' : ''}${mn}<a class="btn alt" style="display:block;margin-top:12px" href="?mis-tarjetas">🎴 Ver todas mis tarjetas</a></div>`;
+  return `<div class="card">${sig}${sig ? '<p class="mute" style="text-align:center;margin:14px 0 0">o</p>' : ''}${mn}<a class="btn alt" style="display:block;margin-top:12px" href="?mis-tarjetas">🎴 Ver todas mis tarjetas</a><a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios</a></div>`;
 }
 function bizData() {
   if (!biz || (!biz.address && !biz.phone && !biz.email)) return '';
@@ -385,7 +385,8 @@ async function walletView() {
   legalFooter();
   $app.innerHTML = `${bhero('Tus tarjetas', 'Mis tarjetas', 'Todas tus tarjetas de sellos en un solo lugar', '🎴')}<div id="w"></div>`;
   const w = document.getElementById('w'), list = savedCards();
-  if (!list.length) { w.innerHTML = '<div class="card"><p class="mute" style="margin:0">Todavía no tenés tarjetas en este celular. Acercá el celular a la tarjeta NFC de un negocio y creá la tuya.</p></div>'; return; }
+  const linkMenus = `<a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios</a>`;
+  if (!list.length) { w.innerHTML = `<div class="card"><p class="mute" style="margin:0">Todavía no tenés tarjetas en este celular. Acercá el celular a la tarjeta NFC de un negocio y creá la tuya.</p></div>${linkMenus}`; return; }
   w.innerHTML = '<p class="mute">Cargando…</p>';
   const rows = await Promise.all(list.map(async ([sl, code]) => {
     try {
@@ -408,6 +409,7 @@ async function walletView() {
   });
   const ib = installHtml('card');
   if (ib) w.insertAdjacentHTML('beforeend', ib);
+  w.insertAdjacentHTML('beforeend', linkMenus);
 }
 
 async function listTab() {
@@ -588,7 +590,8 @@ async function menuTab() {
   <p class="mute" style="margin:0 0 8px">Cargá los productos y las fotos de cada categoría. Tocá “Guardar cambios” y se ven en el menú público al instante.</p>
   <p class="mute" id="mt" style="margin:0 0 10px">Última actualización: —</p>
   <label for="mlk">Link del menú para tus clientes</label><input id="mlk" readonly value="">
-  <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="alt sm" id="mcp">Copiar link</button><a class="btn alt sm" id="mwa" target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a><a class="btn alt sm" id="mver" target="_blank" rel="noopener noreferrer">Ver el menú</a></div><div id="mcs" aria-live="polite"></div></div>
+  <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="alt sm" id="mcp">Copiar link</button><a class="btn alt sm" id="mwa" target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a><a class="btn alt sm" id="mver" target="_blank" rel="noopener noreferrer">Ver el menú</a></div><div id="mcs" aria-live="polite"></div>
+  <a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios de la zona</a></div>
   <div class="card"><div id="magotados" class="mute" style="margin:0 0 10px"></div><div id="mg"></div>
   <button class="alt" id="mnc">+ Nueva categoría</button>
   <p class="msg err" id="mdy" hidden>Tenés cambios sin guardar</p>
@@ -831,7 +834,7 @@ cookieNotice();
     return;
   }
   if (qs.has('mis-tarjetas') || (!slug && savedCards().length)) return walletView();
-  if (!slug) { $app.innerHTML = `${bhero('Tarjeta de sellos', 'Falta el negocio', 'Pedile al negocio el link o el código QR correcto', '🔗', true)}<div class="card"><p class="mute" style="margin:0">El link tiene que incluir el negocio. Ejemplo: <b>?b=nombre-del-negocio</b></p></div>`; return; }
+  if (!slug) { $app.innerHTML = `${bhero('Tarjeta de sellos', 'Falta el negocio', 'Pedile al negocio el link o el código QR correcto', '🔗', true)}<div class="card"><p class="mute" style="margin:0 0 10px">El link tiene que incluir el negocio. Ejemplo: <b>?b=nombre-del-negocio</b></p><a class="btn alt" style="display:block" href="menus/">📍 Ver los menús de los negocios de la zona</a><a class="btn alt" style="display:block;margin-top:12px" href="tarjetas/">🎴 Mis tarjetas</a><a class="btn alt" style="display:block;margin-top:12px" href="panel/">⚙️ Soy un negocio (panel)</a></div>`; return; }
   try {
     biz = await rpc('get_business', { p_slug: slug });
     if (!biz) { $app.innerHTML = '<div class="msg err">Negocio no encontrado</div>'; return; }
