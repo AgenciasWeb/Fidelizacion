@@ -447,6 +447,7 @@ async function listTab() {
   v.innerHTML = '<p class="mute">Cargando…</p>';
   try {
     const L = await rpc('biz_customers', { p_slug: slug, p_pin: pin });
+    L.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
     const cell = x => { x = String(x ?? ''); if (/^[=+\-@\t\r]/.test(x)) x = "'" + x; return '"' + x.replace(/"/g, '""') + '"'; };
     v.innerHTML = `<div class="card"><h2>${L.length} cliente${L.length === 1 ? '' : 's'}</h2>` + (L.length
       ? '<button class="alt" id="exp" style="margin:0 0 8px">Descargar lista (Excel / CSV)</button><p class="mute" style="margin:0 0 8px;font-size:13px">El archivo tiene datos personales de tus clientes. Guardalo de forma segura y usalo solo para esta tarjeta.</p>' + L.map(c =>
@@ -454,8 +455,14 @@ async function listTab() {
       : '<p class="mute">Todavía nadie creó su tarjeta. Compartí el link o la tarjeta NFC.</p>') + '</div>';
     const ex = document.getElementById('exp');
     if (ex) ex.onclick = () => {
-      const rows = [['Nombre', 'Teléfono', 'Sellos', 'Premios canjeados', 'Visitas', 'Última visita', 'Cumpleaños (día/mes)', 'Aceptó ofertas por WhatsApp']].concat(
-        L.map(c => [c.name, c.phone, c.stamps, c.rewards, c.visits, new Date(c.last_seen).toLocaleDateString('es-AR'), c.birthday ? c.birthday.split('-').reverse().join('/') : '', biz.ask_promo ? (c.promo_ok ? 'Sí' : 'No') : 'No se preguntó']));
+      const rows = [['Nombre', 'Teléfono', 'Sellos', 'Faltan para el premio', 'Premios canjeados', 'Visitas', 'Última visita', 'Hora', 'Días sin venir', 'Cumpleaños (día/mes)', 'Aceptó ofertas por WhatsApp']].concat(
+        L.map(c => {
+          const d = new Date(c.last_seen);
+          return [c.name, c.phone, c.stamps, Math.max(0, biz.stamps_needed - c.stamps), c.rewards, c.visits,
+            d.toLocaleDateString('es-AR'), String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'),
+            Math.floor((Date.now() - d) / 864e5), c.birthday ? c.birthday.split('-').reverse().join('/') : '',
+            biz.ask_promo ? (c.promo_ok ? 'Sí' : 'No') : 'No se preguntó'];
+        }));
       const blob = new Blob(['\ufeff' + rows.map(r => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'clientes-' + slug + '.csv'; a.click();
     };
