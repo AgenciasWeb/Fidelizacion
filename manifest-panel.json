@@ -1,9 +1,9 @@
 {
-  "id": "./?panel=1",
+  "id": "./panel.html",
   "name": "Panel de sellos",
   "short_name": "Sellos",
   "lang": "es",
-  "start_url": "./?panel=1",
+  "start_url": "./panel.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f6f1ea",

@@ -1,9 +1,9 @@
 {
-  "id": "./?mis-tarjetas",
+  "id": "./tarjetas.html",
   "name": "Mis tarjetas",
   "short_name": "Mis tarjetas",
   "lang": "es",
-  "start_url": "./?mis-tarjetas",
+  "start_url": "./tarjetas.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f6f1ea",

@@ -196,15 +196,31 @@ addEventListener('beforeinstallprompt', e => { e.preventDefault(); inst = e; });
 const esIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const esAndroid = () => /Android/i.test(navigator.userAgent);
 const yaInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-function pasosInstalar() {
-  if (esIOS()) return 'Abrí esta página con <b>Safari</b>, tocá el botón <b>Compartir</b> (el cuadradito con la flecha hacia arriba) y elegí <b>“Agregar a pantalla de inicio”</b>.';
-  if (esAndroid()) return 'Abrí esta página con <b>Chrome</b>, tocá el menú de los tres puntos (⋮) y elegí <b>“Instalar aplicación”</b> (o “Agregar a pantalla de inicio”).';
-  return 'Abrí esta página en el <b>celular</b>, con Chrome o Safari, y elegí <b>“Instalar aplicación”</b> en el menú del navegador (⋮ o Compartir).';
+/* Cada app tiene su propia página de entrada (tarjetas.html / panel.html) con su
+   manifiesto declarado en el HTML. El navegador lee el manifiesto al cargar la
+   página, así que hay que abrir ESA página: cambiar el <link> por JavaScript
+   llega tarde y el navegador instala la app equivocada. */
+const paginaApp = kind => kind === 'panel' ? 'panel.html' : 'tarjetas.html';
+function pasosInstalar(kind) {
+  const nombre = kind === 'panel' ? 'Panel de sellos' : 'Mis tarjetas';
+  if (esIOS()) return 'Abrí <b>' + nombre + '</b> desde el link, tocá el botón <b>Compartir</b> (el cuadradito con la flecha hacia arriba) y elegí <b>“Agregar a pantalla de inicio”</b>.';
+  if (esAndroid()) return 'Abrí <b>' + nombre + '</b> desde el link, tocá el menú de los tres puntos (⋮) y elegí <b>“Instalar aplicación”</b> (o “Agregar a pantalla de inicio”).';
+  return 'Abrí <b>' + nombre + '</b> desde el link y elegí <b>“Instalar aplicación”</b> en el menú del navegador (⋮ en Chrome, o Compartir en Safari).';
 }
 function installApp(btn) {
+  const kind = btn.dataset.kind || 'card';
   const msg = btn.parentElement.querySelector('[data-imsg]');
+  /* Si estamos en la página de entrada correcta, el navegador ya nos dio su
+     propio aviso de instalación: lo usamos. */
   if (inst) { inst.prompt(); inst = null; if (msg) msg.innerHTML = ''; return; }
-  if (msg) msg.innerHTML = pasosInstalar();
+  /* Si no, llevamos al usuario a su página de entrada, donde el navegador sí
+     muestra la instalación de la app correcta. */
+  const ya = document.querySelector('link[rel=manifest]');
+  if (ya && ya.getAttribute('href') === (kind === 'panel' ? 'manifest-panel.json' : 'manifest.json')) {
+    if (msg) msg.innerHTML = pasosInstalar(kind);
+    return;
+  }
+  location.href = paginaApp(kind);
 }
 function setManifest(kind) {
   let l = document.querySelector('link[rel=manifest]');
@@ -215,7 +231,7 @@ function installHtml(kind) {
   if (yaInstalada()) return '';
   const rot = kind === 'panel' ? 'Instalar el Panel de sellos' : 'Instalar la app Mis tarjetas';
   const txt = kind === 'panel' ? 'El panel del negocio, como app en tu celular.' : 'Todas tus tarjetas juntas, como app en tu celular.';
-  return `<div class="instbox"><button data-inst>${rot}</button><p class="mute" style="margin:6px 0 0">${txt}</p><div class="mute" data-imsg aria-live="polite"></div></div>`;
+  return `<div class="instbox"><button data-inst data-kind="${kind}">${rot}</button><p class="mute" style="margin:6px 0 0">${txt}</p><div class="mute" data-imsg aria-live="polite"></div></div>`;
 }
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-inst]'); if (b) installApp(b); });
 function links() {
