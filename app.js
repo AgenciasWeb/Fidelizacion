@@ -430,14 +430,18 @@ const normText = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\
 async function menuView() {
   document.title = biz.name + ' · Menú';
   legalFooter();
+  /* Si el cliente lo abrió desde el celular y ese negocio tiene menú, ofrecemos
+     volver al menú. Si no, volvemos donde estaba. */
+  const tieneTarjeta = !!savedCards().find(([sl]) => sl === slug);
+  const volver = tieneTarjeta ? `<a class="btn alt" style="display:block;margin-top:12px" href="?b=${encodeURIComponent(slug)}">🎴 Ver mi tarjeta de sellos</a>` : '';
   if (!biz.menu_enabled) {
-    $app.innerHTML = `<h1>${esc(biz.name)}</h1><div class="card"><p class="mute" style="margin:0">Este negocio no tiene menú.</p></div><a class="btn alt" style="display:block" href="?b=${encodeURIComponent(slug)}">Ver mi tarjeta de sellos</a>`;
+    $app.innerHTML = `${bhero('Menú', biz.name, 'Este negocio todavía no cargó su menú', '🍽️', true)}<div class="card"><p class="mute" style="margin:0">Este negocio no tiene menú publicado por ahora.</p></div>${volver}`;
     return;
   }
   $app.innerHTML = `${bhero('Menú', biz.name, '<span id="mu">Cargando menú…</span>', '🍽️')}
   <div class="card"><label for="mq">Buscar en el menú</label><input id="mq" type="search" autocomplete="off" placeholder="Ej: café, torta"></div>
   <div id="ml"></div>
-  <a class="btn alt" style="display:block" href="?b=${encodeURIComponent(slug)}">Ver mi tarjeta de sellos</a>`;
+  ${volver}`;
   const money = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2 });
   let data = null, last = 0;
   const render = () => {
@@ -445,7 +449,8 @@ async function menuView() {
     if (!box || !mu) return;
     mu.textContent = data && data.updated ? 'Actualizado el ' + new Date(data.updated).toLocaleDateString('es-AR') : 'Elegí lo que más te guste';
     if (!data || !data.enabled) { box.innerHTML = '<div class="card"><p class="mute" style="margin:0">Este negocio no tiene menú.</p></div>'; return; }
-    const q = normText(document.getElementById('mq').value);
+    const mq = document.getElementById('mq');
+    const q = mq ? normText(mq.value) : '';
     const its = (data.items || []).filter(x => !q || normText(x.name).includes(q) || normText(x.description).includes(q));
     if (!its.length) { box.innerHTML = `<div class="card"><p class="mute" style="margin:0">${q ? 'No encontramos nada con ese texto.' : 'Todavía no hay productos cargados.'}</p></div>`; return; }
     /* índices de categorías (foto + emoji) que cargó el negocio */
@@ -466,7 +471,8 @@ async function menuView() {
     try { data = await rpc('get_menu', { p_slug: slug }); last = Date.now(); render(); }
     catch (e) { const b = document.getElementById('ml'); if (b) b.innerHTML = `<div class="card"><div class="msg err" style="margin:0">${esc(e.message)}</div></div>`; }
   };
-  document.getElementById('mq').oninput = render;
+  const mqEl = document.getElementById('mq');
+  if (mqEl) mqEl.oninput = render;
   document.addEventListener('visibilitychange', () => {
     if (document.hidden || !document.getElementById('ml')) return;
     if (Date.now() - last < 60000) return;
@@ -483,7 +489,7 @@ async function menuTab() {
   <p class="mute" style="margin:0 0 8px">Cargá los productos y las fotos de cada categoría. Tocá “Guardar cambios” y se ven en el menú público al instante.</p>
   <p class="mute" id="mt" style="margin:0 0 10px">Última actualización: —</p>
   <label for="mlk">Link del menú para tus clientes</label><input id="mlk" readonly value="">
-  <button class="alt sm" id="mcp" style="margin-top:8px">Copiar link</button><div id="mcs" aria-live="polite"></div></div>
+  <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="alt sm" id="mcp">Copiar link</button><a class="btn alt sm" id="mwa" target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a><a class="btn alt sm" id="mver" target="_blank" rel="noopener noreferrer">Ver el menú</a></div><div id="mcs" aria-live="polite"></div></div>
   <div class="card"><div id="mg"></div>
   <button class="alt" id="mnc">+ Nueva categoría</button>
   <p class="msg err" id="mdy" hidden>Tenés cambios sin guardar</p>
@@ -498,6 +504,8 @@ async function menuTab() {
   <label for="mpaste">Lista</label><textarea id="mpaste" rows="4"></textarea>
   <button class="alt" id="mpg">Agregar a la lista</button><div id="mpmsg" aria-live="polite"></div></div>`;
   mlk.value = location.origin + location.pathname + '?b=' + slug + '&menu=1';
+  mwa.href = 'https://wa.me/?text=' + encodeURIComponent('Mirá el menú de ' + biz.name + ' 👉 ' + mlk.value);
+  mver.href = mlk.value;
   const normCat = s => String(s ?? '').trim().slice(0, 40);
   const regroup = arr => { const g = [], ix = {}; arr.forEach(x => { const c = x.category || ''; if (!(c in ix)) { ix[c] = g.length; g.push([]); } g[ix[c]].push(x); }); return [].concat(...g); };
   const pushItem = it => { let last = -1; items.forEach((x, i) => { if (x.category === it.category) last = i; }); const at = last < 0 ? items.length : last + 1; items.splice(at, 0, it); return at; };
