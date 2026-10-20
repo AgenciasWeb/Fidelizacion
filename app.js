@@ -25,6 +25,29 @@ async function rpc(fn, args) {
   return d;
 }
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* Normaliza un teléfono argentino a 10 dígitos (área + número), igual que la
+   base de datos. Acepta cómo lo escribe la gente: con 0, con 15, con +54, etc. */
+function normPhone(v) {
+  let d = String(v ?? '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('549') && d.length > 10) d = d.slice(3);
+  else if (d.startsWith('54') && d.length > 10) d = d.slice(2);
+  d = d.replace(/^0+/, '').replace(/^9/, '');
+  if (d.length > 10) {
+    if (d.slice(3, 5) === '15' && d.length - 2 === 10) d = d.slice(0, 3) + d.slice(5);
+    else if (d.slice(4, 6) === '15' && d.length - 2 === 10) d = d.slice(0, 4) + d.slice(6);
+    else if (d.slice(2, 4) === '15' && d.length - 2 === 10) d = d.slice(0, 2) + d.slice(4);
+  }
+  if (d.length > 10) d = d.slice(-10);
+  return d;
+}
+/* Convierte un teléfono guardado en un número listo para el link de WhatsApp */
+function waNum(phone) {
+  const d = normPhone(phone);
+  if (!d) return '';
+  if (d.length === 10) return '549' + d;   /* celular argentino */
+  return '54' + d;                          /* fijo u otro */
+}
 /* Sube una foto del menú a Supabase Storage usando un "pase" que entrega
    biz_photo_sign (valida el PIN). Devuelve la URL pública. */
 async function subirFoto(slug, pin, file, onProgress) {
@@ -85,17 +108,25 @@ async function customerView() {
     <div class="card"><h2>Creá tu tarjeta</h2>${biz.welcome_stamps > 0 ? '<p class="mute">Te regalamos ' + biz.welcome_stamps + ' sello' + (biz.welcome_stamps > 1 ? 's' : '') + ' de bienvenida.</p>' : ''}<p class="mute">Solo pedimos tu nombre y tu teléfono: son los datos necesarios para tener tu tarjeta. No pedimos dirección, email ni datos de pago.</p>
     <form id="frm" novalidate>
     <label for="n">Tu nombre</label><input id="n" autocomplete="name" maxlength="80" required aria-required="true">
-    <label for="p">Tu teléfono</label><input id="p" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="Con característica, sin 0 ni 15" required aria-required="true">
+    <label for="p">Tu teléfono (WhatsApp)</label><input id="p" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="Ej: 11 2797 0536" required aria-required="true">
+    <p class="mute" id="ph" style="margin:6px 0 0;font-size:13px">Escribilo como quieras: lo acomodamos solos.</p>
     ${biz.ask_birthday ? '<label for="bd">Tu cumpleaños (opcional)</label><input id="bd" type="date">' : ''}
     ${biz.ask_promo ? '<label class="consent"><input type="checkbox" id="pm"> Quiero recibir ofertas y novedades por WhatsApp (opcional)</label>' : ''}
     <label class="consent"><input type="checkbox" id="ac" required aria-required="true"> Acepto la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a> y el uso de mis datos solo para esta tarjeta de sellos.</label>
     <button type="submit" id="go">Crear mi tarjeta</button><div id="m" aria-live="polite"></div></form></div>`;
+    const phEl = document.getElementById('ph');
+    p.oninput = () => {
+      const v = normPhone(p.value);
+      if (!p.value.trim()) { phEl.textContent = 'Escribilo como quieras: lo acomodamos solos.'; phEl.style.color = ''; return; }
+      if (v.length >= 6) { phEl.textContent = '✓ Queda guardado como: ' + v.replace(/^(\d{2,4})(\d+)$/, '$1 $2'); phEl.style.color = ''; }
+      else { phEl.textContent = 'Escribilo como quieras: lo acomodamos solos.'; phEl.style.color = ''; }
+    };
     document.getElementById('frm').onsubmit = async ev => {
       ev.preventDefault();
       const go = document.getElementById('go');
-      const name = n.value.trim(), phone = p.value.replace(/\D/g, '');
+      const name = n.value.trim(), phone = normPhone(p.value);
       if (name.length < 2) return flash(m, 'Escribí tu nombre', false);
-      if (phone.length < 6) return flash(m, 'Escribí un teléfono válido', false);
+      if (phone.length < 6) return flash(m, 'Escribí un teléfono válido (con característica). Ej: 11 2797 0536', false);
       if (!document.getElementById('ac').checked) return flash(m, 'Tenés que aceptar la política de privacidad para crear tu tarjeta', false);
       go.disabled = true;
       try { const code = await rpc('register_customer', { p_slug: slug, p_name: name, p_phone: phone, p_birthday: document.getElementById('bd')?.value || null, p_promo: !!document.getElementById('pm')?.checked });
@@ -153,6 +184,29 @@ function posterView() {
 }
 function stopCam() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } }
 
+/* Avisos para el dueño: premios por canjear, clientes nuevos hoy y clientes
+   que hace mucho que no vienen. Se cargan aparte para no demorar el panel. */
+let _avisoWA = null;
+async function cargarAvisos() {
+  const box = document.getElementById('avisos');
+  if (!box) return;
+  try {
+    const L = await rpc('biz_customers', { p_slug: slug, p_pin: pin });
+    if (!document.getElementById('avisos')) return;
+    const listos = L.filter(c => c.stamps >= biz.stamps_needed).length;
+    const day0 = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+    const hoy = L.filter(c => new Date(c.last_seen) >= day0).length;
+    const frios = L.filter(c => Date.now() - new Date(c.last_seen) > 30 * 864e5).length;
+    const it = [];
+    if (listos) it.push({ k: 'premio', ico: '🎁', t: listos + ' cliente' + (listos === 1 ? '' : 's') + ' con premio para canjear', go: 'list' });
+    if (frios) it.push({ k: 'frio', ico: '😴', t: frios + ' cliente' + (frios === 1 ? '' : 's') + ' hace más de 30 días que no vienen', go: 'stats' });
+    if (hoy && !listos) it.push({ k: 'hoy', ico: '✅', t: hoy + ' vinieron hoy', go: null });
+    if (!it.length) return;
+    box.innerHTML = `<div class="avisos">${it.map(a => `<${a.go ? 'button' : 'div'} class="aviso ${a.k}"${a.go ? ` data-go="${a.go}"` : ''}><span aria-hidden="true">${a.ico}</span>${esc(a.t)}${a.go ? '<span class="aviso-go" aria-hidden="true">›</span>' : ''}</${a.go ? 'button' : 'div'}>`).join('')}</div>`;
+    box.querySelectorAll('[data-go]').forEach(b => b.onclick = () => panel(b.dataset.go));
+  } catch {}
+}
+
 function panel(tab) {
   if (!({ stamp: 1, list: 1, stats: 1, cfg: 1, menu: 1 })[tab] || (tab === 'menu' && !biz.menu_enabled)) tab = 'stamp';
   if (menuDirty && tab !== 'menu' && !confirm('Tenés cambios sin guardar en el menú. ¿Salir sin guardar?')) return;
@@ -160,8 +214,9 @@ function panel(tab) {
   legalFooter();
   const T = [['stamp', 'Sumar sello'], ['list', 'Clientes'], ['stats', 'Resumen'], ['cfg', 'Ajustes']];
   if (biz.menu_enabled) T.push(['menu', 'Menú']);
-  $app.innerHTML = `${bhero('Panel del negocio', biz.name, '', biz.stamp_emoji || biz.reward_emoji || '⚙️', true)}${installHtml('panel')}<div class="tabs${T.length > 4 ? ' t5' : ''}" role="tablist" aria-label="Secciones del panel">${T.map(t => `<button role="tab" aria-selected="${t[0] === tab}" aria-controls="v" class="${t[0] === tab ? 'on' : ''}" data-t="${t[0]}">${t[1]}</button>`).join('')}</div><div id="v" role="tabpanel" tabindex="0"></div>`;
+  $app.innerHTML = `${bhero('Panel del negocio', biz.name, '', biz.stamp_emoji || biz.reward_emoji || '⚙️', true)}${installHtml('panel')}<div id="avisos"></div><div class="tabs${T.length > 4 ? ' t5' : ''}" role="tablist" aria-label="Secciones del panel">${T.map(t => `<button role="tab" aria-selected="${t[0] === tab}" aria-controls="v" class="${t[0] === tab ? 'on' : ''}" data-t="${t[0]}">${t[1]}</button>`).join('')}</div><div id="v" role="tabpanel" tabindex="0"></div>`;
   document.querySelectorAll('[data-t]').forEach(b => b.onclick = () => panel(b.dataset.t));
+  cargarAvisos();
   ({ stamp: stampTab, list: listTab, stats: statsTab, cfg: cfgTab, menu: menuTab })[tab]();
 }
 
@@ -284,20 +339,41 @@ async function statsTab() {
     const top = [...L].filter(c => c.visits > 0).sort((a, b) => b.visits - a.visits).slice(0, 5);
     const day0 = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
     const bds = L.filter(c => c.birthday).map(c => { const [m, d] = c.birthday.split('-').map(Number); let t = new Date(day0.getFullYear(), m - 1, d); if (t < day0) t = new Date(day0.getFullYear() + 1, m - 1, d); return { c, days: Math.round((t - day0) / 864e5) }; }).filter(x => x.days <= 7).sort((a, b) => a.days - b.days);
-    const waLink = (phone, t) => { let d = phone.replace(/\D/g, '').replace(/^0+/, ''); if (!d.startsWith('54')) d = '549' + d; return 'https://wa.me/' + d + '?text=' + encodeURIComponent(t); };
+    const waLink = (phone, t) => 'https://wa.me/' + waNum(phone) + '?text=' + encodeURIComponent(t);
     const wa = c => {
-      let d = c.phone.replace(/\D/g, '').replace(/^0+/, ''); if (!d.startsWith('54')) d = '549' + d;
       const left = biz.stamps_needed - c.stamps;
       const t = `Hola ${c.name.split(' ')[0]}, te esperamos en ${biz.name}! ` + (c.stamps > 0 && left > 0 ? `Te faltan ${left} sellos para tu premio: ${biz.reward}.` : 'Tu tarjeta de sellos te está esperando.');
-      return 'https://wa.me/' + d + '?text=' + encodeURIComponent(t);
+      return 'https://wa.me/' + waNum(c.phone) + '?text=' + encodeURIComponent(t);
     };
     v.innerHTML = `<div class="card"><div class="stats">
       <div class="stat"><b>${L.length}</b>clientes</div><div class="stat"><b>${S.today}</b>sellos hoy</div>
       <div class="stat"><b>${S.week}</b>sellos en 7 días</div><div class="stat"><b>${S.redeemed}</b>premios canjeados</div></div></div>
-    ${chartHtml}
-    <div class="card"><h2>Mejores clientes</h2>${top.length ? top.map(c => `<div class="row"><b>${esc(c.name)}</b><span>${c.visits} visitas</span></div>`).join('') : '<p class="mute">Todavía no hay datos.</p>'}</div>
+    <div class="card"><h2>Resumen de la semana</h2>
+      <p class="mute" style="margin:0 0 8px">Un texto listo para que te lo mandes a vos mismo o lo compartas.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="alt sm" id="rsc">Copiar resumen</button><a class="btn sm" id="rsv" target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a></div>
+      <pre id="rst" class="rstxt"></pre><div id="rsm" aria-live="polite"></div></div>
+    ${chartHtml}    <div class="card"><h2>Mejores clientes</h2>${top.length ? top.map(c => `<div class="row"><b>${esc(c.name)}</b><span>${c.visits} visitas</span></div>`).join('') : '<p class="mute">Todavía no hay datos.</p>'}</div>
     ${!biz.ask_birthday ? '' : `<div class="card"><h2>Cumplen esta semana</h2>${bds.length ? bds.map(x => `<div class="row"><div><b>${esc(x.c.name)}</b><div class="mute">${x.days === 0 ? 'Hoy' : 'En ' + x.days + ' día' + (x.days > 1 ? 's' : '')}</div></div>${(x.c.promo_ok || !biz.ask_promo) ? '<a class="btn sm" target="_blank" rel="noopener noreferrer" href="' + waLink(x.c.phone, (biz.birthday_msg || '¡Feliz cumpleaños, {nombre}! 🎂 Te saludamos de {negocio}. Te esperamos para festejar.').replace(/\{nombre\}/g, x.c.name.split(' ')[0]).replace(/\{negocio\}/g, biz.name)) + '">Saludar por WhatsApp</a>' : (biz.ask_promo ? '<span class="mute">No aceptó mensajes</span>' : '')}</div>`).join('') : '<p class="mute">Nadie por ahora.</p>'}</div>`}
     <div class="card"><h2>Hace más de 30 días que no vienen</h2>${old.length ? old.map(c => `<div class="row"><div><b>${esc(c.name)}</b><div class="mute">${c.stamps}/${biz.stamps_needed} sellos</div></div>${(c.promo_ok || !biz.ask_promo) ? '<a class="btn sm" target="_blank" rel="noopener noreferrer" href="' + wa(c) + '">Escribir por WhatsApp</a>' : (biz.ask_promo ? '<span class="mute">No aceptó ofertas</span>' : '')}</div>`).join('') : '<p class="mute">Nadie por ahora. Buena señal.</p>'}</div>`;
+    /* ---- resumen de la semana, listo para copiar o mandar ---- */
+    const listos = L.filter(c => c.stamps >= biz.stamps_needed).length;
+    const nuevosMes = R.m_new || 0;
+    const resumen = `📊 ${biz.name} — resumen\n` +
+      `• Clientes con tarjeta: ${L.length}\n` +
+      `• Sellos esta semana: ${S.week}\n` +
+      `• Sellos este mes: ${R.m_stamps}\n` +
+      `• Clientes nuevos este mes: ${nuevosMes}\n` +
+      `• Premios canjeados: ${S.redeemed}\n` +
+      (listos ? `• 🎁 ${listos} con premio para canjear\n` : '') +
+      (old.length ? `• 😴 ${old.length} hace más de 30 días que no vienen\n` : '') +
+      (Math.max(...dowV) ? `• Día más fuerte: ${DN[peak(dowV)]}\n` : '') +
+      (Math.max(...hrV) ? `• Horario más fuerte: de ${peak(hrV)} a ${peak(hrV) + 1} h\n` : '');
+    document.getElementById('rst').textContent = resumen;
+    document.getElementById('rsv').href = 'https://wa.me/?text=' + encodeURIComponent(resumen);
+    document.getElementById('rsc').onclick = async () => {
+      try { await navigator.clipboard.writeText(resumen); flash(rsm, 'Resumen copiado', true); }
+      catch { window.getSelection().selectAllChildren(document.getElementById('rst')); flash(rsm, 'Seleccionado: copialo manualmente', true); }
+    };
   } catch (e) { v.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
 }
 

@@ -111,6 +111,22 @@ input[type=file]{font-size:13px}
 .upbar{height:6px;border-radius:999px;background:var(--line);overflow:hidden;display:none}
 .upbar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--ac),var(--ac2));transition:width .2s ease}
 
+/* ============================================================================
+   AVISOS DEL PANEL (premios por canjear, clientes nuevos, clientes fríos)
+   ============================================================================ */
+.avisos{display:flex;flex-direction:column;gap:8px;margin:0 0 14px}
+.aviso{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--card);font-size:14.5px;font-weight:600;color:var(--ink);box-shadow:0 2px 10px -8px rgba(0,0,0,.5);cursor:default}
+button.aviso{cursor:pointer}
+button.aviso:active{transform:translateY(1px)}
+.aviso>span:first-child{font-size:20px;flex:none}
+.aviso-go{margin-left:auto;font-size:22px;opacity:.5;flex:none}
+.aviso.premio{border-color:color-mix(in srgb,var(--ac) 55%,var(--line));background:color-mix(in srgb,var(--ac) 10%,var(--card))}
+.aviso.frio{border-color:color-mix(in srgb,#f59e0b 45%,var(--line));background:color-mix(in srgb,#f59e0b 10%,var(--card))}
+.aviso.hoy{border-color:color-mix(in srgb,#16a34a 40%,var(--line));background:color-mix(in srgb,#16a34a 9%,var(--card))}
+
+/* ---- Resumen para copiar/compartir ---- */
+.rstxt{margin:12px 0 0;padding:14px;background:color-mix(in srgb,var(--line) 22%,var(--bg));border:1px solid var(--line);border-radius:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.55;white-space:pre-wrap;word-break:break-word;color:var(--ink);overflow-x:auto}
+
 /* ---- Modo oscuro: sombras y contrastes ---- */
 @media (prefers-color-scheme:dark){
   .bhero{box-shadow:0 18px 36px -20px rgba(0,0,0,.9)}
