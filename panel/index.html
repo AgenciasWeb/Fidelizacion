@@ -5,12 +5,12 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://bnyfhoxrezvotfktrxmb.supabase.co; img-src 'self' data:; manifest-src 'self'; worker-src 'self'; media-src blob: mediastream:; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
-<meta name="description" content="Mis tarjetas: todas tus tarjetas de sellos de todos los negocios en un solo lugar.">
+<meta name="description" content="Panel de sellos del negocio: sumá sellos, mirá tus clientes y editá tu menú.">
 <link rel="manifest" href="manifest.json">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mis tarjetas</title>
+<title>Panel de sellos</title>
 <style>
-:root{--ac:#c2410c;--bg:#f6f1ea;--card:#fff;--ink:#1c1713;--mute:#6b6257;--line:#e4dbd0}
+:root{--ac:#c2410c;--bg:#f6f1ea;--card:#fffdf9;--ink:#2a2118;--mute:#6b5c4d;--line:#e4d9cb}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 main{max-width:440px;margin:0 auto;padding:28px 16px 40px}
@@ -24,15 +24,20 @@ button,.btn{display:block;width:100%;padding:14px 16px;border:0;border-radius:10
 </head>
 <body>
 <main>
-<h1>Mis tarjetas</h1>
-<p>Todas tus tarjetas de sellos, de todos los negocios, en un solo lugar.</p>
-<button class="btn" id="irapp">Abrir mis tarjetas</button>
-<button class="btn alt" id="inst" hidden>Instalar la app Mis tarjetas</button>
+<h1>Panel de sellos</h1>
+<p>El panel del negocio, como app en tu celular.</p>
+<button class="btn" id="irapp">Abrir el panel</button>
+<button class="btn alt" id="inst" hidden>Instalar el Panel de sellos</button>
 <div class="aviso" id="ayuda" hidden></div>
-<a class="btn alt" href="./?panel=1" style="margin-top:22px">¿Sos un negocio? Entrar al panel</a>
+<a class="btn alt" href="../tarjetas/" style="margin-top:22px">¿Sos cliente? Ver Mis tarjetas</a>
 </main>
 <script>
-  document.getElementById('irapp').onclick = function () { location.href = './?mis-tarjetas'; };
+  function destino() {
+    var s = '';
+    try { s = localStorage.getItem('panel_slug') || ''; } catch (e) {}
+    return s ? ('../?b=' + encodeURIComponent(s) + '&panel=1') : '../?panel=1';
+  }
+  document.getElementById('irapp').onclick = function () { location.href = destino(); };
 
   var btn = document.getElementById('inst'), ayuda = document.getElementById('ayuda');
   var ev = null;
@@ -42,9 +47,7 @@ button,.btn{display:block;width:100%;padding:14px 16px;border:0;border-radius:10
     ayuda.hidden = false;
     ayuda.innerHTML = 'Tocá el menú del navegador (⋮ en Android, o <b>Compartir</b> en iPhone) y elegí <b>“Instalar aplicación”</b> o <b>“Agregar a pantalla de inicio”</b>.';
   };
-  if (matchMedia('(display-mode: standalone)').matches || navigator.standalone) location.replace('./?mis-tarjetas');
-
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+  if (matchMedia('(display-mode: standalone)').matches || navigator.standalone) location.replace(destino());
 </script>
 </body>
 </html>

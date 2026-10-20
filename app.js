@@ -196,36 +196,26 @@ addEventListener('beforeinstallprompt', e => { e.preventDefault(); inst = e; });
 const esIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const esAndroid = () => /Android/i.test(navigator.userAgent);
 const yaInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-/* Cada app tiene su propia página de entrada (tarjetas.html / panel.html) con su
-   manifiesto declarado en el HTML. El navegador lee el manifiesto al cargar la
-   página, así que hay que abrir ESA página: cambiar el <link> por JavaScript
-   llega tarde y el navegador instala la app equivocada. */
-const paginaApp = kind => kind === 'panel' ? 'panel.html' : 'tarjetas.html';
+/* Cada app vive en su propia carpeta (panel/ y tarjetas/) con su manifiesto y su
+   scope propios. Es la forma que recomienda el navegador para tener dos apps
+   instalables del mismo sitio: si comparten el scope, instalar una impide que
+   ofrezca instalar la otra. */
+const paginaApp = kind => kind === 'panel' ? 'panel/' : 'tarjetas/';
+const enPaginaApp = kind => (kind === 'panel') === /\/panel\/?$/.test(location.pathname) && /\/(panel|tarjetas)\/?$/.test(location.pathname);
 function pasosInstalar(kind) {
-  const nombre = kind === 'panel' ? 'Panel de sellos' : 'Mis tarjetas';
-  if (esIOS()) return 'Abrí <b>' + nombre + '</b> desde el link, tocá el botón <b>Compartir</b> (el cuadradito con la flecha hacia arriba) y elegí <b>“Agregar a pantalla de inicio”</b>.';
-  if (esAndroid()) return 'Abrí <b>' + nombre + '</b> desde el link, tocá el menú de los tres puntos (⋮) y elegí <b>“Instalar aplicación”</b> (o “Agregar a pantalla de inicio”).';
-  return 'Abrí <b>' + nombre + '</b> desde el link y elegí <b>“Instalar aplicación”</b> en el menú del navegador (⋮ en Chrome, o Compartir en Safari).';
+  if (esIOS()) return 'Tocá el botón <b>Compartir</b> (el cuadradito con la flecha hacia arriba) y elegí <b>“Agregar a pantalla de inicio”</b>.';
+  if (esAndroid()) return 'Tocá el menú de los tres puntos (⋮) y elegí <b>“Instalar aplicación”</b> (o “Agregar a pantalla de inicio”).';
+  return 'Abrí el menú del navegador (⋮ en Chrome, o Compartir en Safari) y elegí <b>“Instalar aplicación”</b>.';
 }
 function installApp(btn) {
   const kind = btn.dataset.kind || 'card';
   const msg = btn.parentElement.querySelector('[data-imsg]');
-  /* Si estamos en la página de entrada correcta, el navegador ya nos dio su
-     propio aviso de instalación: lo usamos. */
+  /* Si el navegador ya nos dio su propio aviso de instalación, lo usamos. */
   if (inst) { inst.prompt(); inst = null; if (msg) msg.innerHTML = ''; return; }
-  /* Si no, llevamos al usuario a su página de entrada, donde el navegador sí
-     muestra la instalación de la app correcta. */
-  const ya = document.querySelector('link[rel=manifest]');
-  if (ya && ya.getAttribute('href') === (kind === 'panel' ? 'manifest-panel.json' : 'manifest.json')) {
-    if (msg) msg.innerHTML = pasosInstalar(kind);
-    return;
-  }
-  location.href = paginaApp(kind);
-}
-function setManifest(kind) {
-  let l = document.querySelector('link[rel=manifest]');
-  if (!l) { l = document.createElement('link'); l.rel = 'manifest'; document.head.appendChild(l); }
-  l.href = kind === 'panel' ? 'manifest-panel.json' : 'manifest.json';
+  /* Si no estamos en la página propia de la app, vamos ahí: es donde el
+     navegador ofrece instalar la app correcta. */
+  if (!enPaginaApp(kind)) { location.href = paginaApp(kind); return; }
+  if (msg) msg.innerHTML = pasosInstalar(kind);
 }
 function installHtml(kind) {
   if (yaInstalada()) return '';
@@ -290,7 +280,6 @@ const savedCards = () => {
   try { return Object.keys(localStorage).filter(k => k.startsWith('code_')).map(k => [k.slice(5), localStorage.getItem(k)]); } catch { return []; }
 };
 async function walletView() {
-  setManifest('wallet');
   document.title = 'Mis tarjetas';
   legalFooter();
   $app.innerHTML = '<h1>Mis tarjetas</h1><p class="mute">Todas tus tarjetas de sellos en un solo lugar.</p><div id="w"></div>';
@@ -589,7 +578,7 @@ legalFooter();
 cookieNotice();
 (async () => {
   if (isPanel && !slug) {
-    setManifest('panel'); document.title = 'Panel de sellos';
+    document.title = 'Panel de sellos';
     $app.innerHTML = '<h1>Panel de sellos</h1><div class="card"><form id="frm"><label for="sg">Código de tu negocio</label><input id="sg" autocapitalize="none" maxlength="40" required aria-required="true" placeholder="ej: micafe"><button type="submit" id="go">Continuar</button><div id="m" aria-live="polite"></div></form></div>';
     document.getElementById('frm').onsubmit = ev => { ev.preventDefault(); const v = sg.value.trim().toLowerCase(); if (/^[a-z0-9-]{2,40}$/.test(v)) location.href = '?b=' + v + '&panel=1'; else flash(m, 'Escribí el código de tu negocio: solo letras, números y guiones', false); };
     return;
@@ -600,8 +589,8 @@ cookieNotice();
     biz = await rpc('get_business', { p_slug: slug });
     if (!biz) { $app.innerHTML = '<div class="msg err">Negocio no encontrado</div>'; return; }
     setColor(biz.color, biz.color2); setBg(biz.bg_color); legalFooter();
-    if (isPanel) { document.title = biz.name; setManifest('panel'); try { localStorage.setItem('panel_slug', slug); } catch {} }
-    else { document.title = biz.name + ' · Mis tarjetas'; setManifest('wallet'); }
+    if (isPanel) { document.title = biz.name; try { localStorage.setItem('panel_slug', slug); } catch {} }
+    else { document.title = biz.name + ' · Mis tarjetas'; }
     if (qs.has('cartel')) return posterView();
     try { biz.menu_enabled = !!(await rpc('get_features', { p_slug: slug }))?.menu; } catch { biz.menu_enabled = false; }
     if (qs.has('menu') && !isPanel) return menuView();

@@ -1,22 +1,22 @@
 {
-  "id": "./tarjetas.html",
-  "name": "Mis tarjetas",
-  "short_name": "Mis tarjetas",
+  "id": "./",
+  "name": "Panel de sellos",
+  "short_name": "Sellos",
   "lang": "es",
-  "start_url": "./tarjetas.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f6f1ea",
   "theme_color": "#c2410c",
   "icons": [
     {
-      "src": "icon-192.png",
+      "src": "../panel-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-512.png",
+      "src": "../panel-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
