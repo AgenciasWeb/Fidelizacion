@@ -135,7 +135,7 @@ function panel(tab) {
   legalFooter();
   const T = [['stamp', 'Sumar sello'], ['list', 'Clientes'], ['stats', 'Resumen'], ['cfg', 'Ajustes']];
   if (biz.menu_enabled) T.push(['menu', 'Menú']);
-  $app.innerHTML = `<h1>${esc(biz.name)}</h1><div class="tabs${T.length > 4 ? ' t5' : ''}" role="tablist" aria-label="Secciones del panel">${T.map(t => `<button role="tab" aria-selected="${t[0] === tab}" aria-controls="v" class="${t[0] === tab ? 'on' : ''}" data-t="${t[0]}">${t[1]}</button>`).join('')}</div><div id="v" role="tabpanel" tabindex="0"></div><div class="card" style="margin-top:14px">${installHtml('panel')}</div>`;
+  $app.innerHTML = `<h1>${esc(biz.name)}</h1>${installHtml('panel')}<div class="tabs${T.length > 4 ? ' t5' : ''}" role="tablist" aria-label="Secciones del panel">${T.map(t => `<button role="tab" aria-selected="${t[0] === tab}" aria-controls="v" class="${t[0] === tab ? 'on' : ''}" data-t="${t[0]}">${t[1]}</button>`).join('')}</div><div id="v" role="tabpanel" tabindex="0"></div>`;
   document.querySelectorAll('[data-t]').forEach(b => b.onclick = () => panel(b.dataset.t));
   ({ stamp: stampTab, list: listTab, stats: statsTab, cfg: cfgTab, menu: menuTab })[tab]();
 }
@@ -193,9 +193,18 @@ async function stampTab() {
 
 let inst = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); inst = e; });
+const esIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const esAndroid = () => /Android/i.test(navigator.userAgent);
+const yaInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+function pasosInstalar() {
+  if (esIOS()) return 'Abrí esta página con <b>Safari</b>, tocá el botón <b>Compartir</b> (el cuadradito con la flecha hacia arriba) y elegí <b>“Agregar a pantalla de inicio”</b>.';
+  if (esAndroid()) return 'Abrí esta página con <b>Chrome</b>, tocá el menú de los tres puntos (⋮) y elegí <b>“Instalar aplicación”</b> (o “Agregar a pantalla de inicio”).';
+  return 'Abrí esta página en el <b>celular</b>, con Chrome o Safari, y elegí <b>“Instalar aplicación”</b> en el menú del navegador (⋮ o Compartir).';
+}
 function installApp(btn) {
-  if (inst) { inst.prompt(); return; }
-  btn.nextElementSibling.innerHTML = 'Abrí esta página con <b>Chrome</b>, tocá el menú de los tres puntos (⋮) y elegí <b>Instalar app</b>. Si solo ves “Agregar a pantalla de inicio”, esperá unos segundos, recargá la página y probá de nuevo.';
+  const msg = btn.parentElement.querySelector('[data-imsg]');
+  if (inst) { inst.prompt(); inst = null; if (msg) msg.innerHTML = ''; return; }
+  if (msg) msg.innerHTML = pasosInstalar();
 }
 function setManifest(kind) {
   let l = document.querySelector('link[rel=manifest]');
@@ -203,12 +212,16 @@ function setManifest(kind) {
   l.href = kind === 'panel' ? 'manifest-panel.json' : 'manifest.json';
 }
 function installHtml(kind) {
-  return `<button data-inst style="margin-top:0">${kind === 'panel' ? 'Instalar el Panel de sellos' : 'Instalar la app Mis tarjetas'}</button><div class="mute" style="margin-top:8px"></div>`;
+  if (yaInstalada()) return '';
+  const rot = kind === 'panel' ? 'Instalar el Panel de sellos' : 'Instalar la app Mis tarjetas';
+  const txt = kind === 'panel' ? 'El panel del negocio, como app en tu celular.' : 'Todas tus tarjetas juntas, como app en tu celular.';
+  return `<div class="instbox"><button data-inst>${rot}</button><p class="mute" style="margin:6px 0 0">${txt}</p><div class="mute" data-imsg aria-live="polite"></div></div>`;
 }
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-inst]'); if (b) installApp(b); });
 function links() {
   const mn = (biz && biz.menu_enabled) ? `<a class="btn alt" style="display:block;margin-top:12px" href="?b=${encodeURIComponent(slug)}&menu=1">Ver menú</a>` : '';
-  return `<div class="card">${installHtml('card')}${mn}<a class="btn alt" style="display:block;margin-top:12px" href="?mis-tarjetas">Ver todas mis tarjetas</a></div>`;
+  const sig = installHtml('card');
+  return `<div class="card">${sig}${sig ? '<p class="mute" style="text-align:center;margin:14px 0 0">o</p>' : ''}<a class="btn alt" style="display:block;margin-top:12px" href="?mis-tarjetas">Ver todas mis tarjetas</a></div>`;
 }
 function bizData() {
   if (!biz || (!biz.address && !biz.phone && !biz.email)) return '';
@@ -286,7 +299,8 @@ async function walletView() {
   w.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
     if (confirm('¿Quitar esta tarjeta de este celular? No perdés tus sellos: para recuperarla después, pedile al negocio que te la recupere.')) { localStorage.removeItem('code_' + b.dataset.rm); walletView(); }
   });
-  w.insertAdjacentHTML('beforeend', '<div class="card" id="inst">' + installHtml('card') + '</div>');
+  const ib = installHtml('card');
+  if (ib) w.insertAdjacentHTML('beforeend', ib);
 }
 
 async function listTab() {
