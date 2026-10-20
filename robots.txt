@@ -1,0 +1,3 @@
+# No queremos que los buscadores indexen la app ni los enlaces de los negocios.
+User-agent: *
+Disallow: /

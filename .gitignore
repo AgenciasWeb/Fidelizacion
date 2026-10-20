@@ -1,0 +1,6 @@
+﻿# Material interno: NUNCA publicar (GitHub Pages sirve todo lo que este en el repo)
+sql/
+*.zip
+GUIA-*.md
+seguridad-*.sql
+*.local.md
