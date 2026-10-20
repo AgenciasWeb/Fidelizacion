@@ -100,22 +100,30 @@ function stampsGrid(n, on, emoji, tiers, rEmoji) {
 }
 
 /* ---------------- CLIENTE ---------------- */
-/* Le muestra al cliente hace cuánto vino por última vez y cuántas visitas
-   lleva. Ayuda a que vuelva antes y a que se sienta valorado. */
+/* Le muestra al cliente hace cuánto vino por última vez, cuántas visitas
+   lleva y cuándo vencen sus sellos. Ayuda a que vuelva antes de perderlos. */
 function visitaHtml(c) {
-  if (c.last_days === null || c.last_days === undefined) return '';
   const d = c.last_days, v = c.visits || 0;
-  /* Todavía no vino nunca (solo tiene el sello de bienvenida): lo invitamos. */
-  if (v === 0) return '<p class="mute" style="text-align:center;margin:12px 0 0">👋 ¡Te esperamos! Todavía no sumaste tu primer sello.</p>';
-  let cuando;
-  if (d <= 0) cuando = 'Hoy';
-  else if (d === 1) cuando = 'Ayer';
-  else cuando = 'Hace ' + d + ' días';
-  const linea = d <= 0
-    ? '✅ Viniste hoy. ¡Gracias!'
-    : '🕒 Última visita: ' + cuando + ' (' + esc(c.last_date) + ')';
-  const visitas = '<p class="mute" style="text-align:center;margin:6px 0 0">🎉 Ya viniste <b>' + v + '</b> ve' + (v === 1 ? 'z' : 'ces') + ' en total.</p>';
-  return '<p class="mute" style="text-align:center;margin:12px 0 0">' + linea + '</p>' + visitas;
+  const partes = [];
+  /* 1) Aviso de vencimiento (lo más urgente si está por vencer) */
+  if (c.expires && c.stamps > 0 && c.stamps < (biz ? biz.stamps_needed : 1e9)) {
+    partes.push('⏳ Tus sellos vencen el ' + esc(c.expires));
+  }
+  /* 2) Última visita */
+  if (d !== null && d !== undefined) {
+    if (v === 0) {
+      partes.push('👋 ¡Te esperamos! Todavía no sumaste tu primer sello.');
+    } else {
+      let cuando;
+      if (d <= 0) cuando = 'Viniste hoy. ¡Gracias!';
+      else if (d === 1) cuando = 'Última visita: Ayer (' + esc(c.last_date) + ')';
+      else cuando = 'Última visita: Hace ' + d + ' días (' + esc(c.last_date) + ')';
+      partes.push((d <= 0 ? '✅ ' : '🕒 ') + cuando);
+    }
+  }
+  const box = partes.length ? '<p class="mute" style="text-align:center;margin:12px 0 0">' + partes.join('<br>') + '</p>' : '';
+  const visitas = v > 0 ? '<p class="mute" style="text-align:center;margin:6px 0 0">🎉 Ya viniste <b>' + v + '</b> ve' + (v === 1 ? 'z' : 'ces') + ' en total.</p>' : '';
+  return box + visitas;
 }
 async function customerView() {
   legalFooter();
@@ -125,7 +133,7 @@ async function customerView() {
     <div class="card"><h2>Creá tu tarjeta</h2>${biz.welcome_stamps > 0 ? '<p class="mute">Te regalamos ' + biz.welcome_stamps + ' sello' + (biz.welcome_stamps > 1 ? 's' : '') + ' de bienvenida.</p>' : ''}<p class="mute">Solo pedimos tu nombre y tu teléfono: son los datos necesarios para tener tu tarjeta. No pedimos dirección, email ni datos de pago.</p>
     <form id="frm" novalidate>
     <label for="n">Tu nombre</label><input id="n" autocomplete="name" maxlength="80" required aria-required="true">
-    <label for="p">Tu teléfono (WhatsApp)</label><input id="p" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="Ej: 11 2797 0536" required aria-required="true">
+    <label for="p">Tu teléfono (WhatsApp)</label><input id="p" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="Ej: 11 2345 6789" required aria-required="true">
     <p class="mute" id="ph" style="margin:6px 0 0;font-size:13px">Escribilo como quieras: lo acomodamos solos.</p>
     ${biz.ask_birthday ? '<label for="bd">Tu cumpleaños (opcional)</label><input id="bd" type="date">' : ''}
     ${biz.ask_promo ? '<label class="consent"><input type="checkbox" id="pm"> Quiero recibir ofertas y novedades por WhatsApp (opcional)</label>' : ''}
@@ -143,7 +151,7 @@ async function customerView() {
       const go = document.getElementById('go');
       const name = n.value.trim(), phone = normPhone(p.value);
       if (name.length < 2) return flash(m, 'Escribí tu nombre', false);
-      if (phone.length < 6) return flash(m, 'Escribí un teléfono válido (con característica). Ej: 11 2797 0536', false);
+      if (phone.length < 6) return flash(m, 'Escribí un teléfono válido (con característica). Ej: 11 2345 6789', false);
       if (!document.getElementById('ac').checked) return flash(m, 'Tenés que aceptar la política de privacidad para crear tu tarjeta', false);
       go.disabled = true;
       try { const code = await rpc('register_customer', { p_slug: slug, p_name: name, p_phone: phone, p_birthday: document.getElementById('bd')?.value || null, p_promo: !!document.getElementById('pm')?.checked });
@@ -156,15 +164,14 @@ async function customerView() {
     try {
       const c = await rpc('get_card', { p_slug: slug, p_code: saved });
       if (!c) { clearInterval(poll); localStorage.removeItem('code_' + slug); return customerView(); }
-      const done = c.stamps >= biz.stamps_needed, left = biz.stamps_needed - c.stamps, bdToday = c.birthday && c.birthday === new Date().toLocaleDateString('en-CA').slice(5);
+      const done = c.stamps >= biz.stamps_needed, left = biz.stamps_needed - c.stamps, bdToday = c.birthday_today || (c.birthday && c.birthday === new Date().toLocaleDateString('en-CA').slice(5));
       const pct = Math.max(0, Math.min(100, Math.round((c.stamps / biz.stamps_needed) * 100)));
-      $app.innerHTML = `${bhero(done ? '¡Tarjeta completa!' : 'Tu tarjeta', biz.name, 'Hola, ' + esc(c.name), biz.stamp_emoji || biz.reward_emoji || '⭐', true)}${biz.notice ? '<div class="card notice">' + esc(biz.notice) + '</div>' : ''}${bdToday ? '<div class="card notice">🎂 ¡Feliz cumpleaños, ' + esc(c.name.split(' ')[0]) + '!' + (biz.birthday_stamp ? ' Pasá hoy por el local y te regalamos 1 sello extra.' : '') + '</div>' : ''}
+      $app.innerHTML = `${bhero(done ? '¡Tarjeta completa!' : 'Tu tarjeta', biz.name, 'Hola, ' + esc(c.name), biz.stamp_emoji || biz.reward_emoji || '⭐', true)}${biz.notice ? '<div class="card notice">' + esc(biz.notice) + '</div>' : ''}${bdToday ? '<div class="card notice cumple">🎂 ¡Feliz cumpleaños, ' + esc(c.name.split(' ')[0]) + '!' + (c.bday_gift ? ' <b>Te regalamos 1 sello</b> 🎉' : (biz.birthday_stamp ? ' Pasá hoy por el local y te regalamos 1 sello extra.' : '')) + '</div>' : ''}
       <div class="card">${stampsGrid(biz.stamps_needed, c.stamps, biz.stamp_emoji, biz.tiers, biz.reward_emoji)}
       <div class="prog" role="progressbar" aria-valuenow="${c.stamps}" aria-valuemin="0" aria-valuemax="${biz.stamps_needed}" aria-label="${c.stamps} de ${biz.stamps_needed} sellos"><i style="width:${pct}%"></i></div>
       <p class="prog-t"><span>${c.stamps} de ${biz.stamps_needed} sellos</span><span class="mute">${done ? '¡Listo!' : 'Faltan ' + left}</span></p>
       <p class="mute" style="text-align:center;margin-top:10px">${done ? esc(biz.ready_msg || '¡Completaste la tarjeta! Mostrala para canjear') + ': ' : 'Tu premio: '}${esc(biz.reward_emoji || '🎁')} ${esc(biz.reward)}</p>
       ${(biz.tiers || []).map(t => '<p class="mute" style="margin:4px 0;text-align:center">🎁 Sello ' + t.at + ': ' + esc(t.reward) + (c.stamps >= t.at ? ((c.claimed || []).includes(t.at) ? ' ✔ canjeado' : ' · ¡listo para canjear!') : '') + '</p>').join('')}
-      ${c.expires && c.stamps > 0 && !done ? '<p class="mute" style="text-align:center;margin:8px 0 0">⏳ Tus sellos vencen el ' + esc(c.expires) + '</p>' : ''}
       ${visitaHtml(c)}</div>
       <div class="card"><p class="mute" style="text-align:center;margin:0 0 4px">Mostrá este código al negocio para sumar un sello</p>
       <div class="qr" role="img" aria-label="Código QR de tu tarjeta de ${esc(biz.name)}. Tu código es ${esc(c.code)}">${qr(c.code)}</div><div class="code">${esc(c.code)}</div>
@@ -215,7 +222,11 @@ async function cargarAvisos() {
     const day0 = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
     const hoy = L.filter(c => new Date(c.last_seen) >= day0).length;
     const frios = L.filter(c => Date.now() - new Date(c.last_seen) > 30 * 864e5).length;
+    /* ¿Alguien cumple años HOY? Se avisa siempre arriba, es lo más urgente. */
+    const mmdd = new Date().toLocaleDateString('en-CA').slice(5);
+    const cumpleHoy = biz.ask_birthday ? L.filter(c => c.birthday && c.birthday === mmdd) : [];
     const it = [];
+    if (cumpleHoy.length) it.push({ k: 'cumple', ico: '🎂', t: cumpleHoy.length === 1 ? '¡Hoy cumple años ' + cumpleHoy[0].name.split(' ')[0] + '! Salúdalo por WhatsApp' : '¡Hoy cumplen años ' + cumpleHoy.length + ' clientes! Saludalos por WhatsApp', go: 'stats' });
     if (listos) it.push({ k: 'premio', ico: '🎁', t: listos + ' cliente' + (listos === 1 ? '' : 's') + ' con premio para canjear', go: 'list' });
     if (frios) it.push({ k: 'frio', ico: '😴', t: frios + ' cliente' + (frios === 1 ? '' : 's') + ' hace más de 30 días que no vienen', go: 'stats' });
     if (hoy && !listos) it.push({ k: 'hoy', ico: '✅', t: hoy + ' vinieron hoy', go: null });
@@ -226,12 +237,11 @@ async function cargarAvisos() {
 }
 
 function panel(tab) {
-  if (!({ stamp: 1, list: 1, stats: 1, cfg: 1, menu: 1 })[tab] || (tab === 'menu' && !biz.menu_enabled)) tab = 'stamp';
+  if (!({ stamp: 1, list: 1, stats: 1, cfg: 1, menu: 1 })[tab]) tab = 'stamp';
   if (menuDirty && tab !== 'menu' && !confirm('Tenés cambios sin guardar en el menú. ¿Salir sin guardar?')) return;
   stopCam(); stopMenuWarn();
   legalFooter();
-  const T = [['stamp', 'Sumar sello'], ['list', 'Clientes'], ['stats', 'Resumen'], ['cfg', 'Ajustes']];
-  if (biz.menu_enabled) T.push(['menu', 'Menú']);
+  const T = [['stamp', 'Sumar sello'], ['list', 'Clientes'], ['stats', 'Resumen'], ['cfg', 'Ajustes'], ['menu', 'Menú']];
   $app.innerHTML = `${bhero('Panel del negocio', biz.name, '', biz.stamp_emoji || biz.reward_emoji || '⚙️', true)}${installHtml('panel')}<div id="avisos"></div><div class="tabs${T.length > 4 ? ' t5' : ''}" role="tablist" aria-label="Secciones del panel">${T.map(t => `<button role="tab" aria-selected="${t[0] === tab}" aria-controls="v" class="${t[0] === tab ? 'on' : ''}" data-t="${t[0]}">${t[1]}</button>`).join('')}</div><div id="v" role="tabpanel" tabindex="0"></div>`;
   document.querySelectorAll('[data-t]').forEach(b => b.onclick = () => panel(b.dataset.t));
   cargarAvisos();
@@ -241,7 +251,7 @@ function panel(tab) {
 async function stampTab() {
   v.innerHTML = `<div class="card"><label for="q">Buscar cliente por nombre o teléfono</label><input id="q" autocomplete="off" placeholder="Escribí un nombre">
   ${biz.allow_double ? '<label class="consent" style="font-size:15px"><input type="checkbox" id="dbl"> Sumar 2 sellos (compra grande)</label>' : ''}<div id="res"></div><div id="m" aria-live="polite"></div>
-  <button class="alt" id="cam">Escanear QR del cliente con la cámara</button>${biz.menu_enabled ? '<button class="alt" id="mgo" style="margin-top:8px">Editar el menú</button>' : ''}<video id="vid" playsinline muted hidden aria-label="Vista de la cámara para escanear el código del cliente"></video></div>`;
+  <button class="alt" id="cam">Escanear QR del cliente con la cámara</button><button class="alt" id="mgo" style="margin-top:8px">${biz.menu_enabled ? '🍽️ Editar el menú' : '🍽️ Configurar el menú'}</button><video id="vid" playsinline muted hidden aria-label="Vista de la cámara para escanear el código del cliente"></video></div>`;
   let L = [];
   const render = () => {
     const t = q.value.trim().toLowerCase();
@@ -293,6 +303,7 @@ let inst = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); inst = e; });
 const esIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const esAndroid = () => /Android/i.test(navigator.userAgent);
+const esEscritorio = () => !esIOS() && !esAndroid() && !/Mobile/i.test(navigator.userAgent);
 const yaInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 /* Cada app vive en su propia carpeta (panel/, tarjetas/ y menus/) con su
    manifiesto y su scope propios. Es la forma que recomienda el navegador para
@@ -303,6 +314,7 @@ const enPaginaApp = kind => location.pathname.replace(/\/(index\.html)?$/, '/').
 function pasosInstalar(kind) {
   if (esIOS()) return 'Tocá el botón <b>Compartir</b> (el cuadradito con la flecha hacia arriba) y elegí <b>“Agregar a pantalla de inicio”</b>.';
   if (esAndroid()) return 'Tocá el menú de los tres puntos (⋮) y elegí <b>“Instalar aplicación”</b> (o “Agregar a pantalla de inicio”).';
+  if (esEscritorio()) return 'En <b>Chrome de la compu</b>: mirá a la derecha de la barra de direcciones, donde está el ícono de <b>instalar</b> (una pantallita con una flecha ↓). Si no lo ves, abrí el menú <b>⋮</b> (arriba a la derecha) y elegí <b>“Instalar Fidelización”</b> o <b>“Instalar aplicación”</b>. Se abre como una ventana propia, como si fuera un programa.';
   return 'Abrí el menú del navegador (⋮ en Chrome, o Compartir en Safari) y elegí <b>“Instalar aplicación”</b>.';
 }
 function installApp(btn) {
@@ -343,16 +355,14 @@ async function statsTab() {
   v.innerHTML = '<p class="mute">Cargando…</p>';
   try {
     const [S, L, R] = await Promise.all([rpc('biz_stats', { p_slug: slug, p_pin: pin }), rpc('biz_customers', { p_slug: slug, p_pin: pin }), rpc('biz_report', { p_slug: slug, p_pin: pin })]);
-    const old = L.filter(c => Date.now() - new Date(c.last_seen) > 30 * 864e5);
+    const old = L.filter(c => Date.now() - new Date(c.last_seen) > 30 * 864e5).sort((a, b) => new Date(a.last_seen) - new Date(b.last_seen));
     const DN = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'], byDay = {};
     R.days.forEach(x => byDay[x.d] = x.n);
     const ds = [...Array(30)].map((_, i) => new Date(Date.now() - (29 - i) * 864e5).toLocaleDateString('en-CA'));
     const dayV = ds.map(k => byDay[k] || 0), dowV = [0, 1, 2, 3, 4, 5, 6].map(i => (R.dow.find(x => x.d === i) || {}).n || 0), hrV = [...Array(24)].map((_, i) => (R.hours.find(x => x.h === i) || {}).n || 0);
     const peak = a => a.indexOf(Math.max(...a));
     const bars = (arr, lab, hi) => `<div aria-hidden="true" style="display:flex;align-items:flex-end;gap:2px;height:70px">${arr.map((n, i) => `<div title="${lab(i)}: ${n}" style="flex:1;height:${n ? Math.max(n / Math.max(...arr) * 100, 6) : 2}%;background:${i === hi ? 'var(--ac)' : 'var(--line)'};border-radius:2px"></div>`).join('')}</div>`;
-    const trend = (a, b) => b ? ` (${a >= b ? '+' : ''}${Math.round((a - b) / b * 100)}% vs mes anterior)` : '';
-    const chartHtml = `<div class="card"><h2>Este mes</h2><p style="margin:0">${R.m_stamps} sellos${trend(R.m_stamps, R.p_stamps)}<br>${R.m_new} clientes nuevos${trend(R.m_new, R.p_new)}</p></div>
-    <div class="card"><h2>Sellos por día</h2><p class="mute" style="margin:0 0 6px">Últimos 30 días: ${dayV.reduce((a, b) => a + b, 0)} sellos en total; el día con más fue ${Math.max(...dayV)}.</p>${bars(dayV, i => ds[i].slice(8) + '/' + ds[i].slice(5, 7), -1)}</div>
+    const chartHtml = `<div class="card"><h2>Sellos por día</h2><p class="mute" style="margin:0 0 6px">Últimos 30 días: ${dayV.reduce((a, b) => a + b, 0)} sellos en total; el día con más fue ${Math.max(...dayV)}.</p>${bars(dayV, i => ds[i].slice(8) + '/' + ds[i].slice(5, 7), -1)}</div>
     <div class="card"><h2>Cuándo vienen más</h2><p class="mute" style="margin:0 0 6px">Por día de la semana (últimos 90 días)</p>${bars(dowV, i => DN[i], peak(dowV))}
       <p class="mute" style="margin:6px 0 14px">${Math.max(...dowV) ? 'Día más fuerte: <b>' + DN[peak(dowV)] + '</b>' : 'Todavía no hay datos.'}</p>
       <p class="mute" style="margin:0 0 6px">Por hora del día</p>${bars(hrV, i => i + ' h', peak(hrV))}
@@ -369,13 +379,13 @@ async function statsTab() {
     v.innerHTML = `<div class="card"><div class="stats">
       <div class="stat"><b>${L.length}</b>clientes</div><div class="stat"><b>${S.today}</b>sellos hoy</div>
       <div class="stat"><b>${S.week}</b>sellos en 7 días</div><div class="stat"><b>${S.redeemed}</b>premios canjeados</div></div></div>
-    <div class="card"><h2>Resumen de la semana</h2>
+    <div class="card"><h2>Resumen</h2>
       <p class="mute" style="margin:0 0 8px">Un texto listo para que te lo mandes a vos mismo o lo compartas.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="alt sm" id="rsc">Copiar resumen</button><a class="btn sm" id="rsv" target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a></div>
       <pre id="rst" class="rstxt"></pre><div id="rsm" aria-live="polite"></div></div>
     ${chartHtml}    <div class="card"><h2>Mejores clientes</h2>${top.length ? top.map(c => `<div class="row"><b>${esc(c.name)}</b><span>${c.visits} visitas</span></div>`).join('') : '<p class="mute">Todavía no hay datos.</p>'}</div>
     ${!biz.ask_birthday ? '' : `<div class="card"><h2>Cumplen esta semana</h2>${bds.length ? bds.map(x => `<div class="row"><div><b>${esc(x.c.name)}</b><div class="mute">${x.days === 0 ? 'Hoy' : 'En ' + x.days + ' día' + (x.days > 1 ? 's' : '')}</div></div>${(x.c.promo_ok || !biz.ask_promo) ? '<a class="btn sm" target="_blank" rel="noopener noreferrer" href="' + waLink(x.c.phone, (biz.birthday_msg || '¡Feliz cumpleaños, {nombre}! 🎂 Te saludamos de {negocio}. Te esperamos para festejar.').replace(/\{nombre\}/g, x.c.name.split(' ')[0]).replace(/\{negocio\}/g, biz.name)) + '">Saludar por WhatsApp</a>' : (biz.ask_promo ? '<span class="mute">No aceptó mensajes</span>' : '')}</div>`).join('') : '<p class="mute">Nadie por ahora.</p>'}</div>`}
-    <div class="card"><h2>Hace más de 30 días que no vienen</h2>${old.length ? old.map(c => `<div class="row"><div><b>${esc(c.name)}</b><div class="mute">${c.stamps}/${biz.stamps_needed} sellos</div></div>${(c.promo_ok || !biz.ask_promo) ? '<a class="btn sm" target="_blank" rel="noopener noreferrer" href="' + wa(c) + '">Escribir por WhatsApp</a>' : (biz.ask_promo ? '<span class="mute">No aceptó ofertas</span>' : '')}</div>`).join('') : '<p class="mute">Nadie por ahora. Buena señal.</p>'}</div>`;
+    <div class="card"><h2>Hace más de 30 días que no vienen</h2><p class="mute" style="margin:0 0 8px">Escribiles un mensaje para que vuelvan.</p>${old.length ? old.map(c => { const dd = Math.floor((Date.now() - new Date(c.last_seen)) / 864e5); return `<div class="row"><div><b>${esc(c.name)}</b><div class="mute">${c.stamps}/${biz.stamps_needed} sellos · hace ${dd} días</div></div>${(c.promo_ok || !biz.ask_promo) ? '<a class="btn sm" target="_blank" rel="noopener noreferrer" href="' + wa(c) + '">Escribir por WhatsApp</a>' : (biz.ask_promo ? '<span class="mute">No aceptó ofertas</span>' : '')}</div>`; }).join('') : '<p class="mute">Nadie por ahora. Buena señal.</p>'}</div>`;
     /* ---- resumen de la semana, listo para copiar o mandar ---- */
     const listos = L.filter(c => c.stamps >= biz.stamps_needed).length;
     const nuevosMes = R.m_new || 0;
@@ -609,13 +619,31 @@ async function menuView() {
 async function menuTab() {
   menuDirty = false;
   addEventListener('beforeunload', menuUnload);
+  /* Si el menú todavía no está activado, mostramos cómo activarlo. */
+  if (!biz.menu_enabled) {
+    v.innerHTML = `<div class="card"><h2>🍽️ Tu menú digital</h2>
+      <p class="mute" style="margin:0 0 10px">Mostrale a tus clientes todo lo que ofrecés, con precios y fotos. Se ve en un link propio que podés compartir por WhatsApp o poner en tu Instagram.</p>
+      <p class="mute" style="margin:0 0 12px">Tener el menú activado también te agrega a <b>“Menús de la zona”</b>, para que gente nueva te encuentre.</p>
+      <button id="mon">Activar mi menú</button><div id="mm" aria-live="polite"></div></div>`;
+    document.getElementById('mon').onclick = async e => {
+      const b = e.target; b.disabled = true;
+      try {
+        const r = await rpc('biz_menu_toggle', { p_slug: slug, p_pin: pin, p_on: true });
+        biz.menu_enabled = !!(r && r.menu_enabled);
+        flash(document.getElementById('mm'), '¡Menú activado! Ya podés cargar tus productos.', true);
+        setTimeout(() => menuTab(), 700);
+      } catch (err) { b.disabled = false; flash(document.getElementById('mm'), err.message, false); }
+    };
+    return;
+  }
   let items = [], updated = null, cats = [];
   v.innerHTML = `<div class="card"><h2>Menú del negocio</h2>
   <p class="mute" style="margin:0 0 8px">Cargá los productos y las fotos de cada categoría. Tocá “Guardar cambios” y se ven en el menú público al instante.</p>
   <p class="mute" id="mt" style="margin:0 0 10px">Última actualización: —</p>
   <label for="mlk">Link del menú para tus clientes</label><input id="mlk" readonly value="">
   <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="alt sm" id="mcp">Copiar link</button><a class="btn alt sm" id="mwa" target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a><a class="btn alt sm" id="mver" target="_blank" rel="noopener noreferrer">Ver el menú</a></div><div id="mcs" aria-live="polite"></div>
-  <a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios de la zona</a></div>
+  <a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios de la zona</a>
+  <button class="alt" id="moff" style="margin-top:12px;opacity:.85">Ocultar mi menú (desactivarlo)</button><div id="moffm" aria-live="polite"></div></div>
   <div class="card"><div id="magotados" class="mute" style="margin:0 0 10px"></div><div id="mg"></div>
   <button class="alt" id="mnc">+ Nueva categoría</button>
   <p class="msg err" id="mdy" hidden>Tenés cambios sin guardar</p>
@@ -632,6 +660,17 @@ async function menuTab() {
   mlk.value = location.origin + location.pathname + '?b=' + slug + '&menu=1';
   mwa.href = 'https://wa.me/?text=' + encodeURIComponent('Mirá el menú de ' + biz.name + ' 👉 ' + mlk.value);
   mver.href = mlk.value;
+  const moff = document.getElementById('moff');
+  if (moff) moff.onclick = async e => {
+    if (!confirm('¿Ocultar tu menú? Dejará de verse para los clientes hasta que lo actives de nuevo.')) return;
+    const b = e.target; b.disabled = true;
+    try {
+      const r = await rpc('biz_menu_toggle', { p_slug: slug, p_pin: pin, p_on: false });
+      biz.menu_enabled = !!(r && r.menu_enabled);
+      flash(document.getElementById('moffm'), 'Menú oculto. Lo podés activar cuando quieras.', true);
+      setTimeout(() => menuTab(), 700);
+    } catch (err) { b.disabled = false; flash(document.getElementById('moffm'), err.message, false); }
+  };
   const normCat = s => String(s ?? '').trim().slice(0, 40);
   const regroup = arr => { const g = [], ix = {}; arr.forEach(x => { const c = x.category || ''; if (!(c in ix)) { ix[c] = g.length; g.push([]); } g[ix[c]].push(x); }); return [].concat(...g); };
   const pushItem = it => { let last = -1; items.forEach((x, i) => { if (x.category === it.category) last = i; }); const at = last < 0 ? items.length : last + 1; items.splice(at, 0, it); return at; };

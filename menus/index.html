@@ -129,6 +129,7 @@ document.getElementById('ibtn').onclick = () => {
     ? 'Tocá <b>Compartir</b> (el cuadradito con la flecha) y elegí <b>“Agregar a pantalla de inicio”</b>.'
     : 'Abrí el menú del navegador (⋮) y elegí <b>“Instalar aplicación”</b> o <b>“Agregar a pantalla de inicio”</b>.');
 };
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {});
 </script>
 </body>
 </html>
