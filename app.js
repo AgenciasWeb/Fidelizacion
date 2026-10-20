@@ -31,6 +31,10 @@ const textOn = c => lumOf(c) > .179 ? '#1a1a1a' : '#fff';
 const mixHex = (a, b) => '#' + [1, 3, 5].map(i => Math.round((parseInt(a.slice(i, i + 2), 16) + parseInt(b.slice(i, i + 2), 16)) / 2).toString(16).padStart(2, '0')).join('');
 const setColor = (c, c2) => { const a = hexOk(c) ? c : '#c2410c', b = hexOk(c2) ? c2 : a; document.documentElement.style.setProperty('--ac', a); document.documentElement.style.setProperty('--ac2', b); document.documentElement.style.setProperty('--ac-ink', textOn(mixHex(a, b))); document.documentElement.style.setProperty('--btn-ink', textOn(a)); };
 const flash = (el, t, ok) => { el.innerHTML = `<div class="msg ${ok ? 'ok' : 'err'}" role="${ok ? 'status' : 'alert'}">${esc(t)}</div>`; };
+/* Cabecera con el color del negocio (mismo lenguaje visual que el menú) */
+function bhero(kicker, title, sub, ico, small) {
+  return `<header class="bhero${small ? ' hero-sm' : ''}" role="img" aria-label="${esc(title)}">${ico ? `<div class="bhero-ico" aria-hidden="true">${esc(ico)}</div>` : ''}<p class="bhero-k">${esc(kicker)}</p><h1>${esc(title)}</h1>${sub ? `<p class="bhero-u">${sub}</p>` : ''}</header>`;
+}
 const legalFooter = () => { const f = document.getElementById('ft'); if (!f) return; f.hidden = false; f.innerHTML = ((biz && biz.name) ? `<b>${esc(biz.name)}</b> · ` : '') + '<a href="privacidad.html">Política de privacidad</a> · <a href="terminos.html">Términos y condiciones</a> · <a href="cookies.html">Cookies</a> · <a href="terminos.html#negocio">Datos del negocio</a>'; };
 function cookieNotice() { let ok = 1; try { ok = localStorage.getItem('ck_ok'); } catch {} if (ok) return; const el = document.createElement('div'); el.className = 'ck'; el.setAttribute('role', 'region'); el.setAttribute('aria-label', 'Aviso sobre cookies y almacenamiento'); el.innerHTML = '<div><p>No usamos cookies de publicidad ni de seguimiento: solo guardamos tu tarjeta en este dispositivo. <a href="cookies.html">Más información sobre cookies y almacenamiento</a>.</p><button id="cko">Entendido</button></div>'; document.body.appendChild(el); document.body.classList.add('ck-on'); document.getElementById('cko').onclick = () => { try { localStorage.setItem('ck_ok', '1'); } catch {} el.remove(); document.body.classList.remove('ck-on'); }; }
 function qr(text) { const q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag(4, 0); }
@@ -57,7 +61,7 @@ async function customerView() {
   legalFooter();
   const saved = localStorage.getItem('code_' + slug);
   if (!saved) {
-    $app.innerHTML = `<h1>${esc(biz.name)}</h1><p class="mute">Juntá ${biz.stamps_needed} sellos y ganá: ${esc(biz.reward_emoji || '🎁')} ${esc(biz.reward)}.</p>
+    $app.innerHTML = `${bhero('Tarjeta de sellos', biz.name, 'Juntá ' + biz.stamps_needed + ' sellos y ganá: ' + esc(biz.reward_emoji || '🎁') + ' ' + esc(biz.reward), biz.reward_emoji || '🎁')}
     <div class="card"><h2>Creá tu tarjeta</h2>${biz.welcome_stamps > 0 ? '<p class="mute">Te regalamos ' + biz.welcome_stamps + ' sello' + (biz.welcome_stamps > 1 ? 's' : '') + ' de bienvenida.</p>' : ''}<p class="mute">Solo pedimos tu nombre y tu teléfono: son los datos necesarios para tener tu tarjeta. No pedimos dirección, email ni datos de pago.</p>
     <form id="frm" novalidate>
     <label for="n">Tu nombre</label><input id="n" autocomplete="name" maxlength="80" required aria-required="true">
@@ -85,13 +89,15 @@ async function customerView() {
       const c = await rpc('get_card', { p_slug: slug, p_code: saved });
       if (!c) { clearInterval(poll); localStorage.removeItem('code_' + slug); return customerView(); }
       const done = c.stamps >= biz.stamps_needed, left = biz.stamps_needed - c.stamps, bdToday = c.birthday && c.birthday === new Date().toLocaleDateString('en-CA').slice(5);
-      $app.innerHTML = `<h1>${esc(biz.name)}</h1><p class="mute">Hola, ${esc(c.name)}</p>${biz.notice ? '<div class="card notice">' + esc(biz.notice) + '</div>' : ''}${bdToday ? '<div class="card notice">🎂 ¡Feliz cumpleaños, ' + esc(c.name.split(' ')[0]) + '!' + (biz.birthday_stamp ? ' Pasá hoy por el local y te regalamos 1 sello extra.' : '') + '</div>' : ''}
+      const pct = Math.max(0, Math.min(100, Math.round((c.stamps / biz.stamps_needed) * 100)));
+      $app.innerHTML = `${bhero(done ? '¡Tarjeta completa!' : 'Tu tarjeta', biz.name, 'Hola, ' + esc(c.name), biz.stamp_emoji || biz.reward_emoji || '⭐', true)}${biz.notice ? '<div class="card notice">' + esc(biz.notice) + '</div>' : ''}${bdToday ? '<div class="card notice">🎂 ¡Feliz cumpleaños, ' + esc(c.name.split(' ')[0]) + '!' + (biz.birthday_stamp ? ' Pasá hoy por el local y te regalamos 1 sello extra.' : '') + '</div>' : ''}
       <div class="card">${stampsGrid(biz.stamps_needed, c.stamps, biz.stamp_emoji, biz.tiers, biz.reward_emoji)}
-      <p style="text-align:center;margin:0"><b>${c.stamps} de ${biz.stamps_needed}</b> sellos</p>
-      <p class="mute" style="text-align:center;margin-top:6px">${done ? esc(biz.ready_msg || '¡Completaste la tarjeta! Mostrala para canjear') + ': ' : 'Te faltan ' + left + ' sello' + (left > 1 ? 's' : '') + ' para: '}${esc(biz.reward_emoji || '🎁')} ${esc(biz.reward)}</p>
+      <div class="prog" role="progressbar" aria-valuenow="${c.stamps}" aria-valuemin="0" aria-valuemax="${biz.stamps_needed}" aria-label="${c.stamps} de ${biz.stamps_needed} sellos"><i style="width:${pct}%"></i></div>
+      <p class="prog-t"><span>${c.stamps} de ${biz.stamps_needed} sellos</span><span class="mute">${done ? '¡Listo!' : 'Faltan ' + left}</span></p>
+      <p class="mute" style="text-align:center;margin-top:10px">${done ? esc(biz.ready_msg || '¡Completaste la tarjeta! Mostrala para canjear') + ': ' : 'Tu premio: '}${esc(biz.reward_emoji || '🎁')} ${esc(biz.reward)}</p>
       ${(biz.tiers || []).map(t => '<p class="mute" style="margin:4px 0;text-align:center">🎁 Sello ' + t.at + ': ' + esc(t.reward) + (c.stamps >= t.at ? ((c.claimed || []).includes(t.at) ? ' ✔ canjeado' : ' · ¡listo para canjear!') : '') + '</p>').join('')}
       ${c.expires && c.stamps > 0 && !done ? '<p class="mute" style="text-align:center;margin:8px 0 0">⏳ Tus sellos vencen el ' + esc(c.expires) + '</p>' : ''}</div>
-      <div class="card"><p class="mute" style="text-align:center">Mostrá este código al negocio para sumar un sello</p>
+      <div class="card"><p class="mute" style="text-align:center;margin:0 0 4px">Mostrá este código al negocio para sumar un sello</p>
       <div class="qr" role="img" aria-label="Código QR de tu tarjeta de ${esc(biz.name)}. Tu código es ${esc(c.code)}">${qr(c.code)}</div><div class="code">${esc(c.code)}</div>
       <p class="mute" style="text-align:center;margin:12px 0 0">Premios canjeados: ${c.rewards}</p></div>${bizData()}${links()}
       <p class="legal" style="text-align:center;margin-top:8px"><a href="#" id="del">Borrar mi tarjeta y mis datos</a></p><div id="dm" aria-live="polite"></div>
@@ -110,7 +116,7 @@ async function customerView() {
 
 /* ---------------- NEGOCIO ---------------- */
 function loginView(err) {
-  $app.innerHTML = `<h1>Panel de ${esc(biz.name)}</h1><div class="card"><form id="frm"><label for="pn">PIN del negocio</label>
+  $app.innerHTML = `${bhero('Panel del negocio', biz.name, 'Ingresá con el PIN para administrar tu tarjeta de sellos', '🔒', true)}<div class="card"><form id="frm"><label for="pn">PIN del negocio</label>
   <input id="pn" type="password" inputmode="numeric" autocomplete="current-password" maxlength="12" required aria-required="true"><p class="mute" style="margin:8px 0 0">El PIN es personal y secreto. No lo compartas con nadie.</p>
   <button type="submit" id="go">Entrar</button><div id="m" aria-live="polite">${err ? `<div class="msg err" role="alert">${esc(err)}</div>` : ''}</div></form></div>`;
   document.getElementById('frm').onsubmit = async ev => {
@@ -123,7 +129,7 @@ function loginView(err) {
 }
 function posterView() {
   document.title = 'Cartel ' + biz.name;
-  $app.innerHTML = `<div class="card" style="text-align:center;padding:28px"><h1>${esc(biz.name)}</h1><p style="font-size:18px">Escaneá y sumá sellos en tu tarjeta</p><div class="qr" style="width:280px" role="img" aria-label="Código QR para escanear y crear tu tarjeta de ${esc(biz.name)}">${qr(location.origin + location.pathname + '?b=' + slug)}</div><p class="mute">Premio: ${esc(biz.reward_emoji || '🎁')} ${esc(biz.reward)}</p></div><button class="noprint" id="prn">Imprimir</button>`;
+  $app.innerHTML = `<div class="card" style="text-align:center;padding:28px">${bhero('Escaneá y sumá sellos', biz.name, 'Escaneá el código y creá tu tarjeta', biz.stamp_emoji || '⭐')}<div class="qr" style="width:280px" role="img" aria-label="Código QR para escanear y crear tu tarjeta de ${esc(biz.name)}">${qr(location.origin + location.pathname + '?b=' + slug)}</div><p class="mute">Premio: ${esc(biz.reward_emoji || '🎁')} ${esc(biz.reward)}</p></div><button class="noprint" id="prn">Imprimir</button>`;
   document.getElementById('prn').onclick = () => window.print();
 }
 function stopCam() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } }
@@ -135,7 +141,7 @@ function panel(tab) {
   legalFooter();
   const T = [['stamp', 'Sumar sello'], ['list', 'Clientes'], ['stats', 'Resumen'], ['cfg', 'Ajustes']];
   if (biz.menu_enabled) T.push(['menu', 'Menú']);
-  $app.innerHTML = `<h1>${esc(biz.name)}</h1>${installHtml('panel')}<div class="tabs${T.length > 4 ? ' t5' : ''}" role="tablist" aria-label="Secciones del panel">${T.map(t => `<button role="tab" aria-selected="${t[0] === tab}" aria-controls="v" class="${t[0] === tab ? 'on' : ''}" data-t="${t[0]}">${t[1]}</button>`).join('')}</div><div id="v" role="tabpanel" tabindex="0"></div>`;
+  $app.innerHTML = `${bhero('Panel del negocio', biz.name, '', biz.stamp_emoji || biz.reward_emoji || '⚙️', true)}${installHtml('panel')}<div class="tabs${T.length > 4 ? ' t5' : ''}" role="tablist" aria-label="Secciones del panel">${T.map(t => `<button role="tab" aria-selected="${t[0] === tab}" aria-controls="v" class="${t[0] === tab ? 'on' : ''}" data-t="${t[0]}">${t[1]}</button>`).join('')}</div><div id="v" role="tabpanel" tabindex="0"></div>`;
   document.querySelectorAll('[data-t]').forEach(b => b.onclick = () => panel(b.dataset.t));
   ({ stamp: stampTab, list: listTab, stats: statsTab, cfg: cfgTab, menu: menuTab })[tab]();
 }
@@ -282,7 +288,7 @@ const savedCards = () => {
 async function walletView() {
   document.title = 'Mis tarjetas';
   legalFooter();
-  $app.innerHTML = '<h1>Mis tarjetas</h1><p class="mute">Todas tus tarjetas de sellos en un solo lugar.</p><div id="w"></div>';
+  $app.innerHTML = `${bhero('Tus tarjetas', 'Mis tarjetas', 'Todas tus tarjetas de sellos en un solo lugar', '🎴')}<div id="w"></div>`;
   const w = document.getElementById('w'), list = savedCards();
   if (!list.length) { w.innerHTML = '<div class="card"><p class="mute" style="margin:0">Todavía no tenés tarjetas en este celular. Acercá el celular a la tarjeta NFC de un negocio y creá la tuya.</p></div>'; return; }
   w.innerHTML = '<p class="mute">Cargando…</p>';
@@ -579,12 +585,12 @@ cookieNotice();
 (async () => {
   if (isPanel && !slug) {
     document.title = 'Panel de sellos';
-    $app.innerHTML = '<h1>Panel de sellos</h1><div class="card"><form id="frm"><label for="sg">Código de tu negocio</label><input id="sg" autocapitalize="none" maxlength="40" required aria-required="true" placeholder="ej: micafe"><button type="submit" id="go">Continuar</button><div id="m" aria-live="polite"></div></form></div>';
+    $app.innerHTML = `${bhero('Panel del negocio', 'Panel de sellos', 'Ingresá el código de tu negocio para administrarlo', '🔒', true)}<div class="card"><form id="frm"><label for="sg">Código de tu negocio</label><input id="sg" autocapitalize="none" maxlength="40" required aria-required="true" placeholder="ej: micafe"><button type="submit" id="go">Continuar</button><div id="m" aria-live="polite"></div></form></div>`;
     document.getElementById('frm').onsubmit = ev => { ev.preventDefault(); const v = sg.value.trim().toLowerCase(); if (/^[a-z0-9-]{2,40}$/.test(v)) location.href = '?b=' + v + '&panel=1'; else flash(m, 'Escribí el código de tu negocio: solo letras, números y guiones', false); };
     return;
   }
   if (qs.has('mis-tarjetas') || (!slug && savedCards().length)) return walletView();
-  if (!slug) { $app.innerHTML = '<h1>Tarjeta de sellos</h1><p class="mute">Falta el negocio en el link. Pedile al negocio el link o el código QR correcto. Ejemplo: <b>?b=nombre-del-negocio</b></p>'; return; }
+  if (!slug) { $app.innerHTML = `${bhero('Tarjeta de sellos', 'Falta el negocio', 'Pedile al negocio el link o el código QR correcto', '🔗', true)}<div class="card"><p class="mute" style="margin:0">El link tiene que incluir el negocio. Ejemplo: <b>?b=nombre-del-negocio</b></p></div>`; return; }
   try {
     biz = await rpc('get_business', { p_slug: slug });
     if (!biz) { $app.innerHTML = '<div class="msg err">Negocio no encontrado</div>'; return; }
