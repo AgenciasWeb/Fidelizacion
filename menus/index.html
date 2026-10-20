@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://bnyfhoxrezvotfktrxmb.supabase.co; img-src 'self' data: https://bnyfhoxrezvotfktrxmb.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="Mirá los menús de los negocios de tu zona: cafés, rotiserías, hamburgueserías y más.">
+<link rel="manifest" href="manifest.json">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#c2410c">
+<link rel="apple-touch-icon" href="../icon-192.png">
+<title>Menús de la zona</title>
+<style>
+:root{--ac:#c2410c;--ac2:#f59e0b;--ac-ink:#fff;--bg:#fdf7f0;--card:#ffffff;--ink:#1c1917;--mute:#6b6259;--line:#eadfd3;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#17130f;--card:#231d18;--ink:#f5efe8;--mute:#c0b3a5;--line:#3a3029}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;min-height:100vh;background-image:radial-gradient(circle at 50% -18%,color-mix(in srgb,var(--ac) 20%,transparent),transparent 58%);background-attachment:fixed}
+main{max-width:520px;margin:0 auto;padding:22px 16px 48px}
+.bhero{position:relative;overflow:hidden;border-radius:20px;padding:26px 20px 24px;margin:0 0 16px;color:var(--ac-ink);box-shadow:0 16px 32px -18px rgba(0,0,0,.65);background-image:radial-gradient(circle at 88% 6%,rgba(255,255,255,.3),transparent 46%),radial-gradient(circle at 4% 96%,rgba(255,255,255,.2),transparent 44%),linear-gradient(135deg,var(--ac),var(--ac2))}
+.bhero::after{content:"";position:absolute;inset:0;background-image:radial-gradient(color-mix(in srgb,var(--ac-ink) 30%,transparent) 1.2px,transparent 1.3px);background-size:15px 15px;opacity:.35;pointer-events:none}
+.bhero-ico{position:absolute;z-index:1;right:16px;top:16px;width:64px;height:64px;display:grid;place-items:center;font-size:34px;background:color-mix(in srgb,var(--ac-ink) 15%,transparent);border:1px solid color-mix(in srgb,var(--ac-ink) 35%,transparent);border-radius:50%}
+.bhero-k{position:relative;z-index:1;margin:0 0 4px;font-size:12px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;opacity:.92}
+.bhero h1{position:relative;z-index:1;margin:0;color:var(--ac-ink);font-size:28px;line-height:1.15;text-shadow:0 1px 8px rgba(0,0,0,.18)}
+.bhero-u{position:relative;z-index:1;margin:10px 0 0;font-size:14px;opacity:.94;max-width:78%}
+.buscar{position:relative;margin:0 0 16px}
+.buscar input{width:100%;padding:15px 16px 15px 46px;border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink);font:inherit;box-shadow:0 2px 12px -8px rgba(0,0,0,.5)}
+.buscar input:focus{outline:2px solid color-mix(in srgb,var(--ac) 60%,transparent);outline-offset:1px}
+.buscar::before{content:"🔎";position:absolute;left:15px;top:50%;transform:translateY(-50%);font-size:17px;opacity:.7;pointer-events:none}
+.nlist{display:grid;gap:14px}
+.neg{display:block;text-decoration:none;color:var(--ink);border:1px solid var(--line);border-radius:18px;overflow:hidden;background:var(--card);box-shadow:0 6px 22px -16px rgba(0,0,0,.6);transition:transform .12s ease,box-shadow .12s ease}
+.neg:hover{transform:translateY(-2px);box-shadow:0 14px 28px -18px rgba(0,0,0,.7)}
+.neg:active{transform:translateY(0)}
+.neg-cover{position:relative;min-height:130px;display:flex;align-items:flex-end;background-image:radial-gradient(circle at 90% 0%,rgba(255,255,255,.28),transparent 48%),linear-gradient(135deg,var(--nc,var(--ac)),var(--nc2,var(--ac2)))}
+.neg-cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.neg-cover::after{content:"";position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.74),rgba(0,0,0,.18) 60%,transparent);pointer-events:none}
+.neg-sign{position:relative;z-index:1;width:100%;padding:12px 15px;display:flex;align-items:center;gap:10px;color:#fff}
+.neg-ico{width:44px;height:44px;flex:none;display:grid;place-items:center;font-size:24px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.35);border-radius:13px;backdrop-filter:blur(3px)}
+.neg-t{min-width:0;font-size:21px;font-weight:800;letter-spacing:-.01em;text-shadow:0 2px 10px rgba(0,0,0,.6);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.neg-body{padding:13px 15px 15px}
+.neg-meta{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.tag{font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:999px;background:color-mix(in srgb,var(--ac) 12%,var(--bg));color:color-mix(in srgb,var(--ac) 72%,var(--ink));border:1px solid color-mix(in srgb,var(--ac) 26%,var(--line));white-space:nowrap}
+.neg-mute{margin:0;font-size:13.5px;color:var(--mute)}
+.neg-cta{display:inline-block;margin-top:11px;padding:11px 16px;border-radius:12px;background:linear-gradient(135deg,var(--nc,var(--ac)),var(--nc2,var(--ac2)));color:#fff;font-weight:700;font-size:14.5px}
+.cargando,.vacio{padding:26px 16px;text-align:center;color:var(--mute);border:1px dashed var(--line);border-radius:16px;background:var(--card)}
+.pie{margin:22px 0 0;text-align:center;font-size:12.5px;color:var(--mute)}
+@media (prefers-reduced-motion:reduce){.neg{transition:none}.neg:hover{transform:none}}
+</style>
+</head>
+<body>
+<main>
+<header class="bhero">
+  <div class="bhero-ico" aria-hidden="true">🍽️</div>
+  <p class="bhero-k">Menús de la zona</p>
+  <h1 id="ttl">Menús de la zona</h1>
+  <p class="bhero-u">Mirá qué hay para comer en los negocios de acá cerca.</p>
+</header>
+<div class="buscar"><input id="q" type="search" autocomplete="off" placeholder="Buscar negocio o plato" aria-label="Buscar negocio o plato"></div>
+<div id="lista" class="nlist"><div class="cargando">Cargando menús…</div></div>
+<p class="pie" id="pie">Actualizado automáticamente.</p>
+</main>
+<script>
+const SUPABASE_URL = "https://bnyfhoxrezvotfktrxmb.supabase.co";
+const SUPABASE_KEY = "sb_publishable_tSt87CXb32Up5zSTfgTfZg_uVVMXuuS";
+const $l = document.getElementById('lista'), $q = document.getElementById('q');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+async function rpc(fn, args) {
+  const r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify(args || {})
+  });
+  const d = await r.json().catch(() => null);
+  if (!r.ok) throw new Error((d && d.message) || 'Error de conexión');
+  return d;
+}
+function colorSeguro(c, alt) { return /^#[0-9a-f]{6}$/i.test(String(c || '')) ? c : alt; }
+function tarjeta(b) {
+  const cover = String(b.cover || '').trim();
+  const ico = String(b.emoji || '').trim() || '🍽️';
+  const tags = (b.categories || []).slice(0, 4).map(c => `<span class="tag">${esc(c)}</span>`).join('');
+  const cat = (b.categories || []).length > 4 ? `<span class="tag">+${(b.categories || []).length - 4} más</span>` : '';
+  const dir = b.address ? `<p class="neg-mute">📍 ${esc(b.address)}</p>` : '';
+  const c1 = colorSeguro(b.color, '#c2410c'), c2 = colorSeguro(b.color2, '#f59e0b');
+  return `<a class="neg" href="../?b=${encodeURIComponent(b.slug)}&menu=1" style="--nc:${c1};--nc2:${c2}">
+    <div class="neg-cover">${cover ? `<img src="${esc(cover)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
+      <div class="neg-sign"><span class="neg-ico" aria-hidden="true">${esc(ico)}</span><span class="neg-t">${esc(b.name)}</span></div>
+    </div>
+    <div class="neg-body">${tags || cat ? `<div class="neg-meta">${tags}${cat}</div>` : ''}
+      ${dir}
+      <p class="neg-mute">${b.items} producto${b.items === 1 ? '' : 's'} en el menú</p>
+      <span class="neg-cta">Ver el menú →</span>
+    </div></a>`;
+}
+let timer = null;
+async function cargar() {
+  try {
+    const r = await rpc('get_menu_directory', { p_q: $q.value.trim() });
+    const bs = (r && r.businesses) || [];
+    if (!bs.length) {
+      $l.innerHTML = `<div class="vacio">${$q.value.trim() ? 'No encontramos nada con ese texto.' : 'Todavía no hay menús cargados.'}</div>`;
+    } else {
+      $l.innerHTML = bs.map(tarjeta).join('');
+    }
+    document.getElementById('pie').textContent = bs.length + (bs.length === 1 ? ' negocio' : ' negocios') + ' con menú.';
+  } catch (e) {
+    $l.innerHTML = `<div class="vacio">No se pudieron cargar los menús. Revisá tu conexión.</div>`;
+  }
+}
+$q.oninput = () => { clearTimeout(timer); timer = setTimeout(cargar, 220); };
+cargar();
+</script>
+</body>
+</html>

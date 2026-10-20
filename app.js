@@ -276,12 +276,12 @@ addEventListener('beforeinstallprompt', e => { e.preventDefault(); inst = e; });
 const esIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const esAndroid = () => /Android/i.test(navigator.userAgent);
 const yaInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-/* Cada app vive en su propia carpeta (panel/ y tarjetas/) con su manifiesto y su
-   scope propios. Es la forma que recomienda el navegador para tener dos apps
-   instalables del mismo sitio: si comparten el scope, instalar una impide que
-   ofrezca instalar la otra. */
-const paginaApp = kind => kind === 'panel' ? 'panel/' : 'tarjetas/';
-const enPaginaApp = kind => (kind === 'panel') === /\/panel\/?$/.test(location.pathname) && /\/(panel|tarjetas)\/?$/.test(location.pathname);
+/* Cada app vive en su propia carpeta (panel/, tarjetas/ y menus/) con su
+   manifiesto y su scope propios. Es la forma que recomienda el navegador para
+   tener varias apps instalables del mismo sitio: si comparten el scope,
+   instalar una impide que ofrezca instalar la otra. */
+const paginaApp = kind => kind === 'panel' ? 'panel/' : kind === 'menus' ? 'menus/' : 'tarjetas/';
+const enPaginaApp = kind => location.pathname.replace(/\/(index\.html)?$/, '/').endsWith('/' + paginaApp(kind));
 function pasosInstalar(kind) {
   if (esIOS()) return 'Tocá el botón <b>Compartir</b> (el cuadradito con la flecha hacia arriba) y elegí <b>“Agregar a pantalla de inicio”</b>.';
   if (esAndroid()) return 'Tocá el menú de los tres puntos (⋮) y elegí <b>“Instalar aplicación”</b> (o “Agregar a pantalla de inicio”).';
@@ -299,8 +299,8 @@ function installApp(btn) {
 }
 function installHtml(kind) {
   if (yaInstalada()) return '';
-  const rot = kind === 'panel' ? 'Instalar el Panel de sellos' : 'Instalar la app Mis tarjetas';
-  const txt = kind === 'panel' ? 'El panel del negocio, como app en tu celular.' : 'Todas tus tarjetas juntas, como app en tu celular.';
+  const rot = kind === 'panel' ? 'Instalar el Panel de sellos' : kind === 'menus' ? 'Instalar la app Menús de la zona' : 'Instalar la app Mis tarjetas';
+  const txt = kind === 'panel' ? 'El panel del negocio, como app en tu celular.' : kind === 'menus' ? 'Los menús de los negocios, como app en tu celular.' : 'Todas tus tarjetas juntas, como app en tu celular.';
   return `<div class="instbox"><button data-inst data-kind="${kind}">${rot}</button><p class="mute" style="margin:6px 0 0">${txt}</p><div class="mute" data-imsg aria-live="polite"></div></div>`;
 }
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-inst]'); if (b) installApp(b); });
@@ -518,6 +518,7 @@ async function menuView() {
   <div class="card"><label for="mq">Buscar en el menú</label><input id="mq" type="search" autocomplete="off" placeholder="Ej: café, torta"></div>
   <div id="ml"></div>
   <div id="mcontacto"></div>
+  <p class="mute" style="text-align:center;margin:16px 0 0"><a href="menus/">🍽️ Ver los menús de otros negocios</a></p>
   ${volver}`;
   const money = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2 });
   let data = null, last = 0;
