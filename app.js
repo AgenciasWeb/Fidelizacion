@@ -517,6 +517,7 @@ async function menuView() {
   $app.innerHTML = `${bhero('Menú', biz.name, '<span id="mu">Cargando menú…</span>', '🍽️')}
   <div class="card"><label for="mq">Buscar en el menú</label><input id="mq" type="search" autocomplete="off" placeholder="Ej: café, torta"></div>
   <div id="ml"></div>
+  <div id="mcontacto"></div>
   ${volver}`;
   const money = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2 });
   let data = null, last = 0;
@@ -540,12 +541,33 @@ async function menuView() {
       const foto = String(info.photo || '').trim();
       const ico = String(info.emoji || '').trim() || (g.list.map(x => String(x.emoji || '').trim()).find(e => e) || '');
       const head = g.c ? `<header class="mcover${foto ? '' : ' noimg'}" id="cat-${i}">${foto ? `<img src="${esc(foto)}" alt="" loading="lazy" onerror="this.remove()">` : ''}<div class="mcover-sign">${ico ? `<span class="mcover-ico" aria-hidden="true">${esc(ico)}</span>` : ''}<span class="mcover-t">${esc(g.c)}</span><span class="mcover-n">${g.list.length}</span></div></header>` : '';
-      return head + `<ul class="mlist">${g.list.map(x => { const em = String(x.emoji || '').trim(); return `<li class="mrow${x.available ? '' : ' sold'}">${em ? `<span class="memoji" aria-hidden="true">${esc(em)}</span>` : ''}<div class="mtxt"><b>${esc(x.name)}</b>${x.description ? `<div class="mute">${esc(x.description)}</div>` : ''}</div><div class="mprice"><span class="mprice-v">${money.format(Number(x.price) || 0)}</span>${x.available ? '' : '<span class="badge">Agotado</span>'}</div></li>`; }).join('')}</ul>`;
+      return head + `<ul class="mlist">${g.list.map(x => {
+        const em = String(x.emoji || '').trim();
+        const nota = String(x.price_note || '').trim();
+        const precio = nota ? `<span class="mprice-v">${esc(nota)}</span>` : `<span class="mprice-v">${money.format(Number(x.price) || 0)}</span>`;
+        const dest = x.featured ? '<span class="fdest">⭐ Destacado</span>' : '';
+        return `<li class="mrow${x.available ? '' : ' sold'}${x.featured ? ' feat' : ''}">${em ? `<span class="memoji" aria-hidden="true">${esc(em)}</span>` : ''}<div class="mtxt"><b>${esc(x.name)}${dest}</b>${x.description ? `<div class="mute">${esc(x.description)}</div>` : ''}</div><div class="mprice">${precio}${x.available ? '' : '<span class="badge">Agotado</span>'}</div></li>`;
+      }).join('')}</ul>`;
     }).join('');
   };
   const load = async () => {
-    try { data = await rpc('get_menu', { p_slug: slug }); last = Date.now(); render(); }
+    try {
+      data = await rpc('get_menu', { p_slug: slug }); last = Date.now(); render(); contacto();
+    }
     catch (e) { const b = document.getElementById('ml'); if (b) b.innerHTML = `<div class="card"><div class="msg err" style="margin:0">${esc(e.message)}</div></div>`; }
+  };
+  /* Datos de contacto del negocio: WhatsApp y llamar. El teléfono viene del menú. */
+  const contacto = () => {
+    const box = document.getElementById('mcontacto');
+    if (!box || !data) return;
+    const tel = String(data.phone || '').trim();
+    if (!tel) { box.innerHTML = ''; return; }
+    const num = waNum(tel);
+    const dir = String(data.address || '').trim();
+    const msg = 'Hola ' + biz.name + '! Vi el menú y quería consultar.';
+    box.innerHTML = `<div class="card"><h2>¿Querés pedir o consultar?</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="https://wa.me/${esc(num)}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener noreferrer">💬 Escribir por WhatsApp</a><a class="btn alt" href="tel:${esc(num)}">📞 Llamar</a></div>
+      ${dir ? `<p class="mute" style="margin:10px 0 0">📍 ${esc(dir)}</p>` : ''}</div>`;
   };
   const mqEl = document.getElementById('mq');
   if (mqEl) mqEl.oninput = render;
@@ -566,7 +588,7 @@ async function menuTab() {
   <p class="mute" id="mt" style="margin:0 0 10px">Última actualización: —</p>
   <label for="mlk">Link del menú para tus clientes</label><input id="mlk" readonly value="">
   <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="alt sm" id="mcp">Copiar link</button><a class="btn alt sm" id="mwa" target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a><a class="btn alt sm" id="mver" target="_blank" rel="noopener noreferrer">Ver el menú</a></div><div id="mcs" aria-live="polite"></div></div>
-  <div class="card"><div id="mg"></div>
+  <div class="card"><div id="magotados" class="mute" style="margin:0 0 10px"></div><div id="mg"></div>
   <button class="alt" id="mnc">+ Nueva categoría</button>
   <p class="msg err" id="mdy" hidden>Tenés cambios sin guardar</p>
   <button id="msv">Guardar cambios</button><div id="mm" aria-live="polite"></div></div>
@@ -588,7 +610,19 @@ async function menuTab() {
   const setDirty = d => { menuDirty = d; const el = document.getElementById('mdy'); if (el) el.hidden = !d; };
   const updLine = () => { mt.textContent = 'Última actualización: ' + (updated ? new Date(updated).toLocaleString('es-AR') : '—'); };
   const catOf = n => { const c = cats.find(x => x.name === n); if (c) return c; const nn = { name: n, emoji: '', photo: '' }; cats.push(nn); return nn; };
-  const adopt = r => { updated = r.updated; cats = []; items = regroup((r.items || []).map(x => ({ id: x.id, category: normCat(x.category), name: x.name || '', description: x.description || '', price: Number(x.price) || 0, available: !!x.available, hidden: !!x.hidden, emoji: x.emoji || '' }))); items.forEach(x => catOf(x.category)); setDirty(false); updLine(); };
+  /* Sube o baja una categoría entera, junto con todos sus productos. */
+  const moverCategoria = (name, dir) => {
+    const names = []; items.forEach(x => { const c = x.category || ''; if (!names.includes(c)) names.push(c); });
+    const at = names.indexOf(name); if (at < 0) return;
+    const to = at + dir; if (to < 0 || to >= names.length) return;
+    names.splice(to, 0, names.splice(at, 1)[0]);
+    const byCat = {}; items.forEach(x => { (byCat[x.category || ''] = byCat[x.category || ''] || []).push(x); });
+    items = [].concat(...names.map(c => byCat[c] || []));
+    const ord = names.map(c => catOf(c));
+    cats = ord.concat(cats.filter(c => !names.includes(c.name)));
+    setDirty(true); render();
+  };
+  const adopt = r => { updated = r.updated; cats = []; items = regroup((r.items || []).map(x => ({ id: x.id, category: normCat(x.category), name: x.name || '', description: x.description || '', price: Number(x.price) || 0, available: !!x.available, hidden: !!x.hidden, emoji: x.emoji || '', featured: !!x.featured, price_note: x.price_note || '' }))); items.forEach(x => catOf(x.category)); setDirty(false); updLine(); };
   const loadCats = async () => { try { const r = await rpc('biz_cat_list', { p_slug: slug, p_pin: pin }); (r.categories || []).forEach(c => { const e = catOf(c.name); e.emoji = c.emoji || ''; e.photo = c.photo || ''; }); } catch {} };
   const reload = async () => { try { adopt(await rpc('biz_menu_list', { p_slug: slug, p_pin: pin })); await loadCats(); render(); } catch (e) { flash(mm, e.message, false); } };
   const render = () => {
@@ -598,9 +632,15 @@ async function menuTab() {
     items.forEach((x, i) => { const c = x.category || ''; if (!(c in ix)) { ix[c] = groups.length; groups.push({ c, rows: [], start: i }); } groups[ix[c]].rows.push({ x, i }); });
     groups.forEach(g => catOf(g.c));
     const catNames = groups.map(g => g.c);
-    box.innerHTML = groups.length ? groups.map(g => { const ci = catOf(g.c); return `
+    if (groups.length) { const ag = items.filter(x => !x.available).length; document.getElementById('magotados').innerHTML = ag ? `⚠️ Tenés <b>${ag}</b> producto${ag === 1 ? '' : 's'} marcado${ag === 1 ? '' : 's'} como agotado. Los clientes lo ven.` : ''; }
+    else { const ea = document.getElementById('magotados'); if (ea) ea.innerHTML = ''; }
+    box.innerHTML = groups.length ? groups.map((g, gi) => { const ci = catOf(g.c); return `
     <div class="ecatbox" data-catbox="${esc(g.c)}">
-      <div class="ecat-top"><input class="eice" data-cat="${g.start}" value="${esc(g.c)}" maxlength="40" placeholder="Sin categoría" aria-label="Nombre de la categoría" style="flex:1;min-width:0"><span class="mute" style="flex:none">${g.rows.length} prod.</span></div>
+      <div class="ecat-top"><input class="eice" data-cat="${g.start}" value="${esc(g.c)}" maxlength="40" placeholder="Sin categoría" aria-label="Nombre de la categoría" style="flex:1;min-width:0"><span class="mute" style="flex:none">${g.rows.length} prod.</span>
+        <button class="alt sm" data-catup="${esc(g.c)}" ${gi === 0 ? 'disabled' : ''} aria-label="Subir la categoría ${esc(g.c)}" title="Subir categoría">↑</button>
+        <button class="alt sm" data-catdn="${esc(g.c)}" ${gi === groups.length - 1 ? 'disabled' : ''} aria-label="Bajar la categoría ${esc(g.c)}" title="Bajar categoría">↓</button>
+        <button class="alt sm" data-catrm="${esc(g.c)}" aria-label="Borrar la categoría ${esc(g.c)}" title="Borrar categoría">🗑️</button>
+      </div>
       <div class="ecat-foto">
         <div class="ecat-prev">${ci.photo ? `<img src="${esc(ci.photo)}" alt="Foto de ${esc(g.c)}" onerror="this.parentNode.innerHTML='🖼️'">` : '🖼️'}</div>
         <div class="ecat-foto-c">
@@ -616,13 +656,31 @@ async function menuTab() {
       </div>
       ${g.rows.map(r => { const it = r.x, i = r.i; return `
       <div class="erow"><input class="eemoji" data-emo="${i}" value="${esc(it.emoji || '')}" maxlength="8" placeholder="🍔" aria-label="Emoji del producto ${i + 1}"><input class="eic" data-name="${i}" value="${esc(it.name)}" maxlength="80" aria-label="Nombre del producto ${i + 1}">
-      <input data-price="${i}" type="number" inputmode="decimal" step="any" min="0" value="${esc(it.price)}" aria-label="Precio del producto ${i + 1}">
+      <input data-price="${i}" type="number" inputmode="decimal" step="any" min="0" value="${esc(it.price)}" aria-label="Precio del producto ${i + 1}" ${it.price_note ? 'disabled' : ''} title="${it.price_note ? 'Reemplazado por: ' + esc(it.price_note) : 'Precio'}">
       <span class="ebtns"><button class="alt sm" data-up="${i}" aria-label="Subir el producto ${i + 1}">↑</button><button class="alt sm" data-dn="${i}" aria-label="Bajar el producto ${i + 1}">↓</button><button class="alt sm" data-del="${i}" aria-label="Eliminar el producto ${i + 1}">✕</button></span></div>
-      <div class="eopts">${catNames.length > 1 ? `<label class="consent"><span class="mute">Categoría:</span> <select data-mv="${i}" aria-label="Categoría del producto ${i + 1}">${catNames.map(c => `<option value="${esc(c)}"${c === it.category ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>` : ''}<label class="consent"><input type="checkbox" data-sld="${i}" ${it.available ? '' : 'checked'}> Agotado</label><label class="consent"><input type="checkbox" data-hid="${i}" ${it.hidden ? 'checked' : ''}> Ocultar del menú público</label></div>
-      <details><summary>Descripción</summary><textarea data-dsc="${i}" maxlength="200" rows="2" aria-label="Descripción del producto ${i + 1}">${esc(it.description)}</textarea></details>`; }).join('')}
+      <div class="eopts">${catNames.length > 1 ? `<label class="consent"><span class="mute">Categoría:</span> <select data-mv="${i}" aria-label="Categoría del producto ${i + 1}">${catNames.map(c => `<option value="${esc(c)}"${c === it.category ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>` : ''}<label class="consent"><input type="checkbox" data-sld="${i}" ${it.available ? '' : 'checked'}> Agotado por ahora</label><label class="consent"><input type="checkbox" data-hid="${i}" ${it.hidden ? 'checked' : ''}> Ocultar (no se ve nunca)</label><label class="consent"><input type="checkbox" data-ft="${i}" ${it.featured ? 'checked' : ''}> ⭐ Destacado</label></div>
+      <details><summary>Descripción y precio especial</summary><textarea data-dsc="${i}" maxlength="200" rows="2" aria-label="Descripción del producto ${i + 1}">${esc(it.description)}</textarea><input data-pnote="${i}" maxlength="20" value="${esc(it.price_note || '')}" placeholder="En vez de precio, ej: Consultar" aria-label="Texto del precio del producto ${i + 1}"></details>`; }).join('')}
     </div>`; }).join('')
       : '<p class="mute">Todavía no hay productos. Empezá con “+ Nueva categoría”.</p>';
-    box.querySelectorAll('[data-cat]').forEach(el => el.onchange = () => { const i = +el.dataset.cat, old = items[i].category, nw = normCat(el.value); if (nw === old) { el.value = old; return; } const ci = catOf(old); ci.name = nw; items.forEach(x => { if (x.category === old) x.category = nw; }); setDirty(true); render(); });
+    box.querySelectorAll('[data-cat]').forEach(el => el.onchange = () => {
+      const i = +el.dataset.cat, old = items[i].category, nw = normCat(el.value);
+      if (nw === old) { el.value = old; return; }
+      if (nw && cats.some(c => c.name === nw && c.name !== old)) return flash(mm, 'Ya tenés una categoría con ese nombre', false);
+      const ci = catOf(old); ci.name = nw; items.forEach(x => { if (x.category === old) x.category = nw; }); setDirty(true); render();
+    });
+    box.querySelectorAll('[data-catup]').forEach(el => el.onclick = () => moverCategoria(el.dataset.catup, -1));
+    box.querySelectorAll('[data-catdn]').forEach(el => el.onclick = () => moverCategoria(el.dataset.catdn, 1));
+    box.querySelectorAll('[data-catrm]').forEach(el => el.onclick = async () => {
+      const name = el.dataset.catrm;
+      const n = items.filter(x => x.category === name).length;
+      if (!confirm('¿Borrar la categoría “' + (name || 'Sin categoría') + '”' + (n ? ' y sus ' + n + ' producto' + (n === 1 ? '' : 's') : '') + '? No se puede deshacer.')) return;
+      try {
+        await rpc('biz_cat_del', { p_slug: slug, p_pin: pin, p_name: name });
+        cats = cats.filter(c => c.name !== name);
+        items = items.filter(x => x.category !== name);
+        setDirty(false); flash(mm, 'Categoría borrada', true); await reload();
+      } catch (e) { flash(mm, e.message, false); }
+    });
     box.querySelectorAll('[data-catemo]').forEach(el => el.oninput = () => { catOf(el.dataset.catemo).emoji = el.value.slice(0, 8); setDirty(true); });
     box.querySelectorAll('[data-catfile]').forEach(el => el.onchange = async () => {
       const file = el.files && el.files[0]; if (!file) return;
@@ -645,13 +703,15 @@ async function menuTab() {
       try { await rpc('biz_cat_save', { p_slug: slug, p_pin: pin, p_items: cats.map((c, k) => ({ name: c.name, emoji: c.emoji || '', photo: c.photo || '', position: k })) }); } catch {}
       render();
     });
-    box.querySelectorAll('[data-ac]').forEach(el => el.onclick = () => { const at = pushItem({ id: null, category: el.dataset.ac, name: '', description: '', price: 0, available: true, hidden: false, emoji: '' }); setDirty(true); render(); const f = box.querySelector('[data-name="' + at + '"]'); if (f) f.focus(); });
+    box.querySelectorAll('[data-ac]').forEach(el => el.onclick = () => { const at = pushItem({ id: null, category: el.dataset.ac, name: '', description: '', price: 0, available: true, hidden: false, emoji: '', featured: false, price_note: '' }); setDirty(true); render(); const f = box.querySelector('[data-name="' + at + '"]'); if (f) f.focus(); });
     box.querySelectorAll('[data-name]').forEach(el => el.oninput = () => { items[+el.dataset.name].name = el.value; setDirty(true); });
     box.querySelectorAll('[data-emo]').forEach(el => el.oninput = () => { items[+el.dataset.emo].emoji = el.value.slice(0, 8); setDirty(true); });
     box.querySelectorAll('[data-price]').forEach(el => el.oninput = () => { items[+el.dataset.price].price = Number(el.value); setDirty(true); });
     box.querySelectorAll('[data-dsc]').forEach(el => el.oninput = () => { items[+el.dataset.dsc].description = el.value; setDirty(true); });
     box.querySelectorAll('[data-sld]').forEach(el => el.onchange = () => { items[+el.dataset.sld].available = !el.checked; setDirty(true); });
     box.querySelectorAll('[data-hid]').forEach(el => el.onchange = () => { items[+el.dataset.hid].hidden = el.checked; setDirty(true); });
+    box.querySelectorAll('[data-ft]').forEach(el => el.onchange = () => { items[+el.dataset.ft].featured = el.checked; setDirty(true); });
+    box.querySelectorAll('[data-pnote]').forEach(el => el.oninput = () => { items[+el.dataset.pnote].price_note = el.value.slice(0, 20); setDirty(true); });
     box.querySelectorAll('[data-mv]').forEach(el => el.onchange = () => {
       const i = +el.dataset.mv, nc = el.value;
       if (nc === items[i].category) return;
@@ -672,7 +732,7 @@ async function menuTab() {
     const nc = normCat(c);
     if (!nc) return flash(mm, 'Escribí un nombre para la categoría', false);
     if (nc.length > 40) return flash(mm, 'La categoría no puede superar los 40 caracteres', false);
-    const at = pushItem({ id: null, category: nc, name: '', description: '', price: 0, available: true, hidden: false, emoji: '' });
+    const at = pushItem({ id: null, category: nc, name: '', description: '', price: 0, available: true, hidden: false, emoji: '', featured: false, price_note: '' });
     setDirty(true); render();
     const f = document.querySelector('#mg [data-name="' + at + '"]'); if (f) f.focus();
   };
@@ -681,9 +741,10 @@ async function menuTab() {
     if (items.some(x => !x.name.trim() || x.name.trim().length > 80)) return flash(mm, 'Todos los productos necesitan un nombre de 1 a 80 caracteres', false);
     if (items.some(x => !isFinite(Number(x.price)) || Number(x.price) < 0)) return flash(mm, 'Revisá los precios: van solo números, sin letras ni signos', false);
     if (items.some(x => x.category.length > 40)) return flash(mm, 'La categoría no puede superar los 40 caracteres', false);
+    if (items.some(x => String(x.price_note || '').trim().length > 20)) return flash(mm, 'El texto del precio no puede superar los 20 caracteres', false);
     const b = document.getElementById('msv'); b.disabled = true;
     try {
-      await rpc('biz_menu_save', { p_slug: slug, p_pin: pin, p_items: items.map(x => ({ id: x.id || null, category: x.category, name: x.name.trim(), description: x.description.trim(), price: Number(x.price) || 0, available: !!x.available, hidden: !!x.hidden, emoji: String(x.emoji || '').trim().slice(0, 8) })) });
+      await rpc('biz_menu_save', { p_slug: slug, p_pin: pin, p_items: items.map(x => ({ id: x.id || null, category: x.category, name: x.name.trim(), description: x.description.trim(), price: Number(x.price) || 0, available: !!x.available, hidden: !!x.hidden, emoji: String(x.emoji || '').trim().slice(0, 8), featured: !!x.featured, price_note: String(x.price_note || '').trim() })) });
       await rpc('biz_cat_save', { p_slug: slug, p_pin: pin, p_items: cats.map((c, k) => ({ name: c.name, emoji: c.emoji || '', photo: c.photo || '', position: k })) });
       setDirty(false); flash(mm, 'Menú guardado', true); await reload();
     } catch (e) { flash(mm, e.message, false); }
@@ -717,7 +778,7 @@ async function menuTab() {
       if (raw.indexOf(',') >= 0) raw = raw.replace(/\./g, '').replace(',', '.');
       const price = Number(raw);
       if (!cat || !nom || !isFinite(price) || price < 0) { mal++; return; }
-      pushItem({ id: null, category: cat, name: nom, description: '', price: Math.round(price * 100) / 100, available: true, hidden: false, emoji: '' });
+      pushItem({ id: null, category: cat, name: nom, description: '', price: Math.round(price * 100) / 100, available: true, hidden: false, emoji: '', featured: false, price_note: '' });
       ok++;
     });
     if (!ok) return flash(mpmsg, 'No pude leer ninguna línea. Usá el formato: Categoría; Nombre; Precio', false);
