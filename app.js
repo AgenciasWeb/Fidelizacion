@@ -385,7 +385,7 @@ async function pedidosTab() {
       plist.innerHTML = P.map(o => {
         const its = (o.items || []).map(i => `<li class="olit"><span class="oq">${i.q || 1}×</span> ${esc(i.n)}${i.e ? ' ' + esc(i.e) : ''} <span class="mute">${money.format(Number(i.p) || 0)}</span></li>`).join('');
         const orig = o.origen || 'llevar';
-        const tag = orig === 'mesa' && o.mesa ? `🍽️ Mesa ${esc(o.mesa)}` : orig === 'retirar' ? '🛍️ Retirar' : '🥡 Para llevar';
+        const tag = orig === 'mesa' && o.mesa ? `🍽️ Mesa ${esc(o.mesa)}` : '🥡 Para llevar';
         return `<div class="ocard"><div class="ohead"><b>${esc(o.cliente)}</b><span class="mute">${tag} · ${hace(o.creado)}</span></div><ul class="olits">${its}</ul>${o.nota ? `<p class="onota">💬 ${esc(o.nota)}</p>` : ''}<div class="ototal">Total ${money.format(Number(o.total) || 0)} <span class="mute" style="font-weight:400">· lo cargó el cliente</span></div><div class="erow"><button class="sm" data-e="${o.id}">Entregar + 1 sello</button><button class="alt sm" data-c="${o.id}">Cancelar pedido</button></div></div>`;
       }).join('');
       plist.querySelectorAll('[data-e]').forEach(b => b.onclick = async () => {
@@ -872,6 +872,14 @@ async function menuView() {
   const pedir = async () => {
     const code = localStorage.getItem('code_' + slug);
     if (!code) { formRegistro(); return; }
+    const origen = document.querySelector('input[name="porigen"]:checked')?.value || 'mesa';
+    const mesa = (document.getElementById('pmesa')?.value || '').trim();
+    if (origen === 'mesa' && !mesa) {
+      const pmsg = document.getElementById('pmsg');
+      if (pmsg) pmsg.innerHTML = '<div class="msg err" role="alert">Poné el número de mesa para poder pedir</div>';
+      document.getElementById('pmesa')?.focus();
+      return;
+    }
     let nombre = '';
     try { const c = await rpc('get_card', { p_slug: slug, p_code: code }); if (c) nombre = c.name; } catch (e) {}
     await enviar(code, nombre);
@@ -880,15 +888,14 @@ async function menuView() {
     const box = document.getElementById('cart');
     if (!box) return;
     if (!conPedidos || !cart.length) { box.innerHTML = ''; return; }
-    box.innerHTML = `<div class="card"><h2>Tu pedido</h2><ul class="mlist">${cart.map((x, i) => `<li class="mrow"><span class="memoji" aria-hidden="true">${esc(x.e || '🛒')}</span><div class="mtxt"><b>${esc(x.n)}</b><div class="mute">${money.format(x.p)} c/u</div></div><span class="ebtns"><button class="alt sm" data-less="${i}" aria-label="Quitar uno">−</button><b class="oq">${x.q}</b><button class="alt sm" data-plus="${i}" aria-label="Agregar uno">+</button></span></li>`).join('')}</ul>
+    box.innerHTML = `<div class="card"><h2>Tu pedido</h2><ul class="mlist">${cart.map((x, i) => `<li class="mrow"><span class="memoji" aria-hidden="true">${esc(x.e || '🛒')}</span><div class="mtxt"><b>${esc(x.n)}</b><div class="mute">${money.format(x.p)} c/u</div></div></li><div class="mqty"><button class="alt sm" data-less="${i}" aria-label="Quitar uno">−</button><b class="oq">${x.q}</b><button class="alt sm" data-plus="${i}" aria-label="Agregar uno">+</button></div>`).join('')}</ul>
     <div style="margin-top:12px">
       <p class="mute" style="margin:0 0 8px">¿Cómo querés recibirlo?</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <label class="consent" style="margin:0"><input type="radio" name="porigen" value="mesa" checked> En mesa</label>
         <label class="consent" style="margin:0"><input type="radio" name="porigen" value="llevar"> Para llevar</label>
-        <label class="consent" style="margin:0"><input type="radio" name="porigen" value="retirar"> Retirar</label>
       </div>
-      <div id="mesaWrap" style="margin-top:10px"><label for="pmesa">Nº de mesa</label><input id="pmesa" inputmode="numeric" maxlength="6" placeholder="Ej: 4"></div>
+      <div id="mesaWrap" style="margin-top:10px"><label for="pmesa">Nº de mesa *</label><input id="pmesa" inputmode="numeric" maxlength="6" placeholder="Ej: 4"></div>
     </div>
     <div class="ototal">Total ${money.format(total())}</div>
     <label for="pnota">Nota para el local (opcional)</label><input id="pnota" maxlength="120" placeholder="Ej: sin azúcar, etc.">
