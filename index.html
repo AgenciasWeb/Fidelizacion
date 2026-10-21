@@ -116,12 +116,44 @@ details summary{cursor:pointer;color:var(--mute);font-size:14px;margin-top:8px}
 .ecat:first-child{margin-top:0}
 .tabs.t5{gap:4px}
 .tabs.t5 button{flex:1 1 0;min-width:0;font-size:12px;padding:8px 2px;line-height:1.2;white-space:normal}
+/* ---- Modo mostrador: sellar en 1 toque ---- */
+.scanbtn{font-size:17px;padding:16px}
+.msec{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);margin:18px 0 8px}
+.mgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.mtile{display:block;width:100%;margin:0;padding:12px;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.05);cursor:pointer}
+.mtile b{display:block;font-size:17px;line-height:1.2}
+.mtile .mp{display:block;font-size:13px;color:var(--mute)}
+.mtile .ms{display:block;font-size:13px;font-weight:700;color:var(--ac);margin-top:4px}
+.mtile.done{border-color:var(--ac);background:color-mix(in srgb,var(--ac) 12%,var(--card))}
+.mtile.hit{animation:pop .35s}
+.mbanner{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px;border-radius:12px;background:#dcfce7;color:#166534;margin:12px 0;font-weight:700}
+.mbanner span{flex:1;min-width:0}
+.mbanner .undo{margin:0;padding:8px 12px;font-size:14px;background:transparent;color:inherit;border:1px solid currentColor;border-radius:10px;cursor:pointer}
+@media (prefers-color-scheme:dark){.mbanner{background:#052e16;color:#86efac}}
+#scanov{position:fixed;inset:0;z-index:90;background:#000}
+#scanov video{width:100%;height:100%;object-fit:cover;display:block}
+#scanov .sh{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+#scanov .box{width:68vw;max-width:260px;aspect-ratio:1;border-radius:20px;box-shadow:0 0 0 100vmax rgba(0,0,0,.5)}
+#scanov .hint{position:absolute;bottom:26px;left:0;right:0;text-align:center;color:#fff;font-weight:700;margin:0;padding:0 16px}
+#scanov .x{position:absolute;top:16px;right:16px;width:46px;height:46px;margin:0;padding:0;border-radius:999px;background:rgba(255,255,255,.18);color:#fff;font-size:22px}
+/* ---- Módulo pedidos ---- */
+.madd{flex:none;width:40px;height:40px;margin:0;padding:0;border-radius:12px;background:var(--ac);color:var(--ac-ink);font-size:22px;line-height:1;display:grid;place-items:center;cursor:pointer}
+.ocard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.ohead{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.ohead b{font-size:17px}
+.olits{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.olit{font-size:15px;line-height:1.35}
+.oq{display:inline-block;min-width:26px;text-align:center;font-weight:700;color:var(--ac)}
+.onota{margin:8px 0 0;padding:8px 10px;border-radius:10px;background:var(--bg);border:1px dashed var(--line);font-size:14px}
+.ototal{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-weight:700;text-align:right}
+.ocard .erow{margin-top:12px}
+.ocard .erow button{flex:1;margin:0}
 </style>
 </head>
 <body>
 <a class="skip" href="#app">Saltar al contenido</a>
 <main id="app" tabindex="-1"></main>
 <footer id="ft" class="legal" hidden></footer>
-<script src="app.js?v=20261020"></script>
+<script src="app.js?v=20261025"></script>
 </body>
 </html>
