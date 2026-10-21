@@ -95,6 +95,8 @@ de pedidos:
 
 1. Supabase → **SQL Editor** → New query.
 2. Pegá el contenido de `sql/001_modulo_pedidos.sql` → **Run**.
+   (La carpeta `sql/` es material interno: **no se publica** en GitHub Pages.
+   El archivo queda solo en el repo privado.)
 3. Encendé el módulo para tu negocio:
 
 ```sql
