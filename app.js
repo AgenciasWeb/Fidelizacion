@@ -947,7 +947,7 @@ async function menuView() {
         const nota = String(x.price_note || '').trim();
         const precio = nota ? esc(nota) : money.format(Number(x.price) || 0);
         const desc = String(x.description || '').trim();
-        return `<button class="mcard${x.available ? '' : ' sold'}" data-it="${esc(x.name)}"><div class="mcard-imgwrap">${ph ? `<img class="mcard-img" src="${esc(ph)}" alt="" loading="lazy" onerror="this.style.display='none'">` : ''}<div class="mcard-ph">${ph ? '' : (em || '🍽️')}</div></div><div class="mcard-body"><div class="mcard-top"><div class="mcard-name">${esc(x.name)}</div>${x.featured ? '<span class="fdest">⭐</span>' : ''}</div>${desc ? `<div class="mcard-desc">${esc(desc)}</div>` : ''}<div class="mcard-foot"><div class="mcard-price">${precio}</div>${x.available ? '' : '<span class="mcard-badge">Agotado</span>'}</div></div></button>`;
+        return `<button class="mcard${x.available ? '' : ' sold'}" data-it="${esc(x.name)}"><div class="mcard-imgwrap">${ph ? `<img class="mcard-img" src="${esc(ph)}" alt="" loading="lazy" onerror="this.style.display='none'; if(this.nextElementSibling){this.nextElementSibling.style.display='grid';}">` : ''}<div class="mcard-ph" style="${ph ? 'display:none' : ''}">${em || '🍽️'}</div></div><div class="mcard-body"><div class="mcard-top"><div class="mcard-name">${esc(x.name)}</div>${x.featured ? '<span class="fdest">⭐</span>' : ''}</div>${desc ? `<div class="mcard-desc">${esc(desc)}</div>` : ''}<div class="mcard-foot"><div class="mcard-price">${precio}</div>${x.available ? '' : '<span class="mcard-badge">Agotado</span>'}</div></div></button>`;
       }).join('')}</div>`;
     }).join('');
     box.querySelectorAll('[data-it]').forEach(b => {
