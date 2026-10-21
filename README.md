@@ -73,6 +73,7 @@ panel/index.html       Wrapper para instalar "Panel de sellos" como PWA.
 tarjetas/index.html    Wrapper para instalar "Mis tarjetas" como PWA.
 sw.js                  Service worker mínimo (no cacheea, solo habilita la PWA).
 sql/001_modulo_pedidos.sql   Migración del módulo de pedidos (tablas + 7 funciones).
+sql/menu-y-pedidos.sql       Regla "menú y pedidos van juntos" (apagar el menú apaga los pedidos).
 privacidad.html        Política de privacidad.
 terminos.html          Términos y condiciones.
 cookies.html           Aviso de cookies.
@@ -86,7 +87,7 @@ cookies.html           Aviso de cookies.
 
 Todo el front es estático. Se sube a cualquier hosting (Netlify / Vercel / GitHub Pages /
 Cloudflare Pages). `app.js` se cachea con query string: **al publicar, cambiá `?v=` en
-`index.html`** (`<script src="app.js?v=20261025">`).
+`index.html`** (`<script src="app.js?v=20261025c">`).
 
 ### 2. Backend (Supabase)
 
@@ -117,6 +118,27 @@ O desde *Ajustes* del panel (checkbox "Activar pedidos"), que usa la función
 - La pertenencia de la tarjeta se valida **reusando `get_card`** (no se duplica la lógica).
 - El sello del pedido se suma **reusando `biz_stamp`**: respeta caducidad, minutos
   mínimos entre sellos, cumpleaños y el historial.
+
+### 4. El menú y los pedidos van juntos
+
+El pedido se arma **en el menú** (el carrito vive ahí). Por eso las dos cosas están
+atadas:
+
+- **El cliente entra al menú con su tarjeta.** Si no tiene, el menú le pide crearla
+  (nombre + teléfono) o entrar con el **código de 8 caracteres** de su QR (para quien
+  ya la tenía en otro celular). Así el sello siempre es consecuencia de una visita
+  real y nunca se pide el teléfono a la mitad del pedido.
+- **El negocio prende y apaga su menú** desde *Ajustes* → *Implementar menú digital*,
+  o desde la pestaña *Menú* del panel. Esa pestaña **siempre está visible**: si el
+  menú está apagado, el botón "Activar mi menú" queda a la vista (antes la pestaña se
+  escondía y el dueño se quedaba sin forma de volver a prenderlo).
+- **Apagar el menú apaga los pedidos**, y no se pueden prender pedidos sin menú. La
+  regla vive en el servidor (`sql/menu-y-pedidos.sql`), no solo en la pantalla:
+
+| Función | Regla |
+|---|---|
+| `biz_menu_toggle(p_on := false)` | Apaga también `modulos.pedidos` del negocio. |
+| `modulo_activar('pedidos', true)` | Falla con *"Primero activá tu menú digital: los pedidos se hacen desde el menú"*. |
 
 ---
 

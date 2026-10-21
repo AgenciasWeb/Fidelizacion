@@ -249,7 +249,9 @@ async function cargarAvisos() {
 }
 
 function panel(tab) {
-  if (!({ stamp: 1, list: 1, stats: 1, cfg: 1, menu: 1, ped: 1 })[tab] || (tab === 'menu' && !biz.menu_enabled) || (tab === 'ped' && !biz.modulos?.pedidos)) tab = 'stamp';
+  /* La pestaña "Menú" aparece siempre: si el negocio apagó su menú, desde
+     ahí lo vuelve a activar (antes quedaba escondida y no había forma). */
+  if (!({ stamp: 1, list: 1, stats: 1, cfg: 1, menu: 1, ped: 1 })[tab] || (tab === 'ped' && !biz.modulos?.pedidos)) tab = 'stamp';
   if (menuDirty && tab !== 'menu' && !confirm('Tenés cambios sin guardar en el menú. ¿Salir sin guardar?')) return;
   stopCam(); stopMenuWarn();
   if (stampIv) { clearInterval(stampIv); stampIv = null; }
@@ -258,7 +260,7 @@ function panel(tab) {
   const T = [['stamp', 'Mostrador']];
   if (biz.modulos?.pedidos) T.push(['ped', 'Pedidos']);
   T.push(['list', 'Clientes'], ['stats', 'Resumen'], ['cfg', 'Ajustes']);
-  if (biz.menu_enabled) T.push(['menu', 'Menú']);
+  T.push(['menu', biz.menu_enabled ? 'Menú' : 'Menú ⚠']);
   $app.innerHTML = `${bhero('Panel del negocio', biz.name, '', biz.stamp_emoji || biz.reward_emoji || '⚙️', true)}${installHtml('panel')}<div id="avisos"></div><div class="tabs${T.length > 4 ? ' t5' : ''}" role="tablist" aria-label="Secciones del panel">${T.map(t => `<button role="tab" aria-selected="${t[0] === tab}" aria-controls="v" class="${t[0] === tab ? 'on' : ''}" data-t="${t[0]}">${t[1]}</button>`).join('')}</div><div id="v" role="tabpanel" tabindex="0"></div>`;
   document.querySelectorAll('[data-t]').forEach(b => b.onclick = () => panel(b.dataset.t));
   cargarAvisos();
@@ -626,8 +628,11 @@ function cfgTab() {
   <p class="mute" style="margin:6px 0 0">Estas dos opciones funcionan si activaste “Pedir el cumpleaños”.</p>
   <label>Premios intermedios (opcional): se canjean al llegar a ese sello, sin reiniciar la tarjeta</label>
   ${[0, 1, 2].map(i => '<div style="display:flex;gap:8px;margin-top:8px"><input id="tn' + i + '" type="number" min="1" placeholder="Sello nº" style="width:36%" value="' + ((biz.tiers || [])[i]?.at || '') + '"><input id="tr' + i + '" maxlength="60" placeholder="Premio (ej: Café gratis)" value="' + esc((biz.tiers || [])[i]?.reward || '') + '"></div>').join('')}
-  ${(biz.modulos && 'pedidos' in biz.modulos) ? `<h2 style="margin-top:18px">Módulos</h2>
-  <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="c30" style="width:auto" ${biz.modulos.pedidos ? 'checked' : ''}> Activar pedidos</label>
+  <h2 style="margin-top:18px">Menú digital</h2>
+  <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="c40" style="width:auto" ${biz.menu_enabled ? 'checked' : ''}> Implementar menú digital</label>
+  <p class="mute" style="margin:6px 0 0">Con el menú activado tus clientes ven tus productos con precios y fotos, arman su pedido y a vos te sale todo en la pestaña <b>Pedidos</b>. También aparecés en “Menús de la zona”.</p>
+  <p class="mute" style="margin:6px 0 0">Si apagás el menú, se apagan también los pedidos: el pedido se arma en el menú.</p>
+  ${(biz.modulos && 'pedidos' in biz.modulos) ? `<label style="display:flex;gap:8px;align-items:center;color:var(--ink);margin-top:12px"><input type="checkbox" id="c30" style="width:auto" ${biz.modulos.pedidos ? 'checked' : ''} ${biz.menu_enabled ? '' : 'disabled'}> Activar pedidos</label>
   <p class="mute" style="margin:6px 0 0">Los clientes arman su pedido en el menú y a vos te aparece en la pestaña <b>Pedidos</b>: un toque y le entregás el pedido + se le suma el sello. Si no lo activás, la tarjeta sigue funcionando igual.</p>` : ''}
   <label for="c6">Nuevo PIN (6 a 12 números; vacío = no cambiarlo)</label><input id="c6" type="password" inputmode="numeric">
   <button id="sv">Guardar cambios</button><button class="alt" id="lo">Cerrar sesión</button><div id="m"></div>
@@ -636,6 +641,9 @@ function cfgTab() {
   [c4, c12, c13, c20].forEach(i => i.oninput = pv); pv();
   c21.oninput = () => { c22.checked = false; setBg(c21.value); };
   c22.onchange = () => setBg(c22.checked ? '' : c21.value);
+  /* Sin menú no hay pedidos: el interruptor de pedidos sigue al del menú. */
+  const elC40 = document.getElementById('c40'), elC30 = document.getElementById('c30');
+  if (elC40 && elC30) elC40.onchange = () => { elC30.disabled = !elC40.checked; if (!elC40.checked) elC30.checked = false; };
   lo.onclick = () => { try { sessionStorage.removeItem('pin_' + slug); } catch {} location.reload(); };
   sv.onclick = async () => {
     // Chequeos rápidos con mensaje claro antes de tocar el servidor.
@@ -657,9 +665,13 @@ function cfgTab() {
     await paso('datos', () => rpc('biz_update', a));
     await paso('contacto', () => rpc('biz_set_contact', { p_slug: slug, p_pin: pin, p_address: c23.value.trim(), p_phone: c24.value.trim(), p_email: c25.value.trim() }));
     await paso('fondo', () => rpc('biz_set_bg', { p_slug: slug, p_pin: pin, p_bg: bgVal }));
-    const c30 = document.getElementById('c30');
-    if (c30) await paso('modulos', () => rpc('modulo_activar', { p_slug: slug, p_pin: pin, p_modulo: 'pedidos', p_activo: c30.checked }));
-    const fallas = pasos.filter(p => p.startsWith('err:')).map(p => { const [n, m] = p.slice(4).split('|'); return (n === 'datos' ? 'los datos de la tarjeta' : n === 'contacto' ? 'los datos del negocio' : n === 'modulos' ? 'el módulo de pedidos' : 'el color de fondo') + ' (' + m + ')'; });
+    const c30 = document.getElementById('c30'), c40 = document.getElementById('c40');
+    /* El menú se prende o apaga desde acá. Al apagarlo, el servidor apaga
+       también los pedidos (el pedido se arma en el menú). */
+    const menuCambio = !!(c40 && c40.checked !== !!biz.menu_enabled);
+    if (c40) await paso('menu', () => rpc('biz_menu_toggle', { p_slug: slug, p_pin: pin, p_on: c40.checked }));
+    if (c30 && c40 && c40.checked) await paso('modulos', () => rpc('modulo_activar', { p_slug: slug, p_pin: pin, p_modulo: 'pedidos', p_activo: c30.checked }));
+    const fallas = pasos.filter(p => p.startsWith('err:')).map(p => { const [n, m] = p.slice(4).split('|'); return (n === 'datos' ? 'los datos de la tarjeta' : n === 'contacto' ? 'los datos del negocio' : n === 'modulos' ? 'el módulo de pedidos' : n === 'menu' ? 'el menú digital' : 'el color de fondo') + ' (' + m + ')'; });
     if (fallas.length) {
       // Si falló el núcleo de la tarjeta, no se aplica nada en pantalla.
       flash(m, 'No se pudieron guardar: ' + fallas.join(' y '), false);
@@ -667,8 +679,18 @@ function cfgTab() {
     }
     if (c6.value) { pin = c6.value; sessionStorage.setItem('pin_' + slug, pin); }
     biz = { ...biz, name: a.p_name, stamps_needed: a.p_needed, reward: a.p_reward, color: a.p_color, min_minutes: a.p_minutes, expiry_days: a.p_expiry, welcome_stamps: a.p_welcome, allow_double: a.p_double, stamp_emoji: a.p_emoji, color2: a.p_color2, notice: a.p_notice, ready_msg: a.p_ready, ask_birthday: a.p_ask_bday, ask_promo: a.p_ask_promo, birthday_stamp: a.p_bday_stamp, birthday_msg: a.p_bday_msg, tiers: JSON.parse(a.p_tiers), reward_emoji: a.p_reward_emoji, bg_color: bgVal, address: c23.value.trim(), phone: c24.value.trim(), email: c25.value.trim() };
-    if (c30) biz.modulos = { ...(biz.modulos || {}), pedidos: c30.checked };
-    setColor(a.p_color, a.p_color2); legalFooter(); flash(m, 'Cambios guardados', true);
+    if (c40) biz.menu_enabled = c40.checked;
+    if (c30) biz.modulos = { ...(biz.modulos || {}), pedidos: !!(c40 && c40.checked && c30.checked) };
+    setColor(a.p_color, a.p_color2); legalFooter();
+    /* Si cambió el menú hay que redibujar el panel: aparecen o se van las
+       pestañas “Menú” y “Pedidos”. */
+    if (menuCambio) {
+      panel('cfg');
+      const mm = document.getElementById('m');
+      if (mm) flash(mm, c40.checked ? 'Cambios guardados. ¡Menú activado!' : 'Cambios guardados. Menú apagado (y los pedidos también).', true);
+      return;
+    }
+    flash(m, 'Cambios guardados', true);
   };
 }
 
@@ -679,6 +701,85 @@ function stopMenuWarn() { menuDirty = false; removeEventListener('beforeunload',
 addEventListener('beforeunload', menuUnload);
 const normText = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
+/* ---- MENÚ: para entrar hace falta la tarjeta ----
+   El menú es del negocio, pero el cliente entra con su tarjeta: así el sello
+   es consecuencia de su visita y nunca se pide el teléfono a la mitad.
+   Si ya tiene tarjeta (de este celular o de otro), entra con su código. */
+function menuTarjeta() {
+  $app.innerHTML = `${bhero('Menú', biz.name, 'Creá tu tarjeta para ver el menú y hacer tu pedido', '🎴', true)}
+  <div class="card"><h2>Primero creá tu tarjeta</h2>
+    <p class="mute" style="margin:0 0 10px">Para ver el menú y pedir necesitás tu tarjeta de ${esc(biz.name)}. Solo pedimos tu nombre y tu teléfono: con eso juntás sellos y ganás ${esc(biz.reward_emoji || '🎁')} ${esc(biz.reward)}.</p>
+    ${biz.welcome_stamps > 0 ? `<p class="mute">Te regalamos ${biz.welcome_stamps} sello${biz.welcome_stamps > 1 ? 's' : ''} de bienvenida.</p>` : ''}
+    <form id="frm" novalidate>
+    <label for="n">Tu nombre</label><input id="n" autocomplete="name" maxlength="80" required aria-required="true">
+    <label for="p">Tu teléfono (WhatsApp)</label><input id="p" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="Ej: 11 2345 6789" required aria-required="true">
+    <p class="mute" id="ph" style="margin:6px 0 0;font-size:13px">Escribilo como quieras: lo acomodamos solos.</p>
+    ${biz.ask_birthday ? '<label for="bd">Tu cumpleaños (opcional)</label><input id="bd" type="date">' : ''}
+    ${biz.ask_promo ? '<label class="consent"><input type="checkbox" id="pm"> Quiero recibir ofertas y novedades por WhatsApp (opcional)</label>' : ''}
+    <label class="consent"><input type="checkbox" id="ac" required aria-required="true"> Acepto la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a> y el uso de mis datos solo para esta tarjeta de sellos.</label>
+    <button type="submit" id="go">Crear mi tarjeta y ver el menú</button><div id="m" aria-live="polite"></div></form></div>
+  <div class="card"><details id="det"><summary style="cursor:pointer;font-weight:700">Ya tengo mi tarjeta: entrar con mi código</summary>
+    <form id="frm2" novalidate style="margin-top:12px">
+    <label for="cd">Tu código de tarjeta</label><input id="cd" autocapitalize="characters" autocomplete="off" maxlength="8" placeholder="Ej: A1B2C3D4" required aria-required="true">
+    <p class="mute" style="margin:6px 0 0;font-size:13px">Son los 8 caracteres de tu QR (si te los mandaron por WhatsApp, usá ese mensaje).</p>
+    <button type="submit" id="go2">Entrar con mi código</button><div id="m2" aria-live="polite"></div></form></details></div>
+  <a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios</a>`;
+  const elN = document.getElementById('n'), elP = document.getElementById('p'), ph = document.getElementById('ph'), m = document.getElementById('m');
+  elP.oninput = () => {
+    const v = normPhone(elP.value);
+    if (!elP.value.trim()) { ph.textContent = 'Escribilo como quieras: lo acomodamos solos.'; ph.style.color = ''; return; }
+    ph.textContent = v.length >= 6 ? '✓ Queda guardado como: ' + v.replace(/^(\d{2,4})(\d+)$/, '$1 $2') : 'Escribilo como quieras: lo acomodamos solos.';
+    ph.style.color = '';
+  };
+  document.getElementById('frm').onsubmit = async ev => {
+    ev.preventDefault();
+    const go = document.getElementById('go');
+    const name = elN.value.trim(), phone = normPhone(elP.value);
+    if (name.length < 2) return flash(m, 'Escribí tu nombre', false);
+    if (phone.length < 6) return flash(m, 'Escribí un teléfono válido (con característica). Ej: 11 2345 6789', false);
+    if (!document.getElementById('ac').checked) return flash(m, 'Tenés que aceptar la política de privacidad para crear tu tarjeta', false);
+    go.disabled = true;
+    try {
+      const code = await rpc('register_customer', { p_slug: slug, p_name: name, p_phone: phone, p_birthday: document.getElementById('bd')?.value || null, p_promo: !!document.getElementById('pm')?.checked });
+      localStorage.setItem('code_' + slug, code);
+      menuView();
+    } catch (e) {
+      go.disabled = false;
+      flash(m, e.message, false);
+      if (/Ya tenés una tarjeta/i.test(e.message || '')) {
+        m.innerHTML += '<p class="mute" style="margin:8px 0 0">Si esa tarjeta es tuya, entrá con tu código (abajo) o pedile al negocio que te la recupere.</p>';
+        document.getElementById('det').open = true;
+      }
+    }
+  };
+  document.getElementById('frm2').onsubmit = async ev => {
+    ev.preventDefault();
+    const go2 = document.getElementById('go2'), m2 = document.getElementById('m2');
+    const cod = document.getElementById('cd').value.trim().toUpperCase();
+    if (!/^[A-Z0-9]{6,8}$/.test(cod)) return flash(m2, 'El código tiene 6 a 8 letras o números', false);
+    go2.disabled = true;
+    try {
+      const c = await rpc('get_card', { p_slug: slug, p_code: cod });
+      if (!c) { go2.disabled = false; return flash(m2, 'No encontramos una tarjeta con ese código en este negocio', false); }
+      localStorage.setItem('code_' + slug, cod);
+      menuView();
+    } catch (e) { go2.disabled = false; flash(m2, e.message, false); }
+  };
+}
+
+/* Si el negocio está conectado en este dispositivo (abrió "Ver el menú" desde
+   el panel), puede ver su propio menú sin tarjeta: el panel ya lo identificó. */
+async function esDueño() {
+  const ps = sessionStorage.getItem('pin_' + slug);
+  if (!ps) return false;
+  try {
+    const st = await rpc('biz_stats', { p_slug: slug, p_pin: ps });
+    if (st && !st.error) return true;
+    sessionStorage.removeItem('pin_' + slug);
+  } catch {}
+  return false;
+}
+
 async function menuView() {
   document.title = biz.name + ' · Menú';
   legalFooter();
@@ -687,9 +788,26 @@ async function menuView() {
   const tieneTarjeta = !!savedCards().find(([sl]) => sl === slug);
   const volver = tieneTarjeta ? `<a class="btn alt" style="display:block;margin-top:12px" href="?b=${encodeURIComponent(slug)}">🎴 Ver mi tarjeta de sellos</a>` : '';
   if (!biz.menu_enabled) {
-    $app.innerHTML = `${bhero('Menú', biz.name, 'Este negocio todavía no cargó su menú', '🍽️', true)}<div class="card"><p class="mute" style="margin:0">Este negocio no tiene menú publicado por ahora.</p></div>${installHtml('menus')}${volver}`;
+    $app.innerHTML = `${bhero('Menú', biz.name, 'Este negocio todavía no cargó su menú', '🍽️', true)}<div class="card"><p class="mute" style="margin:0">Este negocio no tiene menú publicado por ahora.</p></div>${installHtml('menus')}${tieneTarjeta ? volver : `<a class="btn alt" style="display:block;margin-top:12px" href="?b=${encodeURIComponent(slug)}">🎴 Crear mi tarjeta de sellos</a>`}`;
     return;
   }
+  /* Para ver el menú hace falta la tarjeta del negocio: así el cliente no entra
+     a un menú donde después le dicen que no tiene tarjeta. Si el código guardado
+     ya no existe (borró la tarjeta en otro celular), se lo vuelve a pedir.
+     El negocio dueño, si está conectado en este dispositivo, sí puede verlo. */
+  const code = localStorage.getItem('code_' + slug);
+  let acceso = false;
+  if (code) {
+    try {
+      const c = await rpc('get_card', { p_slug: slug, p_code: code });
+      if (c) acceso = true;
+      else localStorage.removeItem('code_' + slug);
+    } catch (e) {
+      $app.innerHTML = `<div class="msg err" role="alert">${esc(e.message)}</div><p class="legal" style="text-align:center"><a href="?b=${encodeURIComponent(slug)}&menu=1">Volver a intentar</a></p>`;
+      return;
+    }
+  }
+  if (!acceso && !(await esDueño())) return menuTarjeta();
   $app.innerHTML = `${bhero('Menú', biz.name, '<span id="mu">Cargando menú…</span>', '🍽️')}
   <div class="card"><label for="mq">Buscar en el menú</label><input id="mq" type="search" autocomplete="off" placeholder="Ej: café, torta"></div>
   <div id="misped"></div><div id="cart"></div><div id="pmsg" aria-live="polite"></div>
@@ -840,15 +958,18 @@ async function menuTab() {
   if (!biz.menu_enabled) {
     v.innerHTML = `<div class="card"><h2>🍽️ Tu menú digital</h2>
       <p class="mute" style="margin:0 0 10px">Mostrale a tus clientes todo lo que ofrecés, con precios y fotos. Se ve en un link propio que podés compartir por WhatsApp o poner en tu Instagram.</p>
-      <p class="mute" style="margin:0 0 12px">Tener el menú activado también te agrega a <b>“Menús de la zona”</b>, para que gente nueva te encuentre.</p>
+      <p class="mute" style="margin:0 0 12px">Tener el menú activado también te agrega a <b>“Menús de la zona”</b>, para que gente nueva te encuentre. Lo podés prender o apagar cuando quieras desde <b>Ajustes</b>.</p>
       <button id="mon">Activar mi menú</button><div id="mm" aria-live="polite"></div></div>`;
     document.getElementById('mon').onclick = async e => {
       const b = e.target; b.disabled = true;
       try {
         const r = await rpc('biz_menu_toggle', { p_slug: slug, p_pin: pin, p_on: true });
         biz.menu_enabled = !!(r && r.menu_enabled);
-        flash(document.getElementById('mm'), '¡Menú activado! Ya podés cargar tus productos.', true);
-        setTimeout(() => menuTab(), 700);
+        setTimeout(() => {
+          panel('menu');
+          const mm = document.getElementById('mm');
+          if (mm) flash(mm, '¡Menú activado! Ya podés cargar tus productos.', true);
+        }, 700);
       } catch (err) { b.disabled = false; flash(document.getElementById('mm'), err.message, false); }
     };
     return;
@@ -858,7 +979,7 @@ async function menuTab() {
   <p class="mute" style="margin:0 0 8px">Cargá los productos y las fotos de cada categoría. Tocá “Guardar cambios” y se ven en el menú público al instante.</p>
   <p class="mute" id="mt" style="margin:0 0 10px">Última actualización: —</p>
   <label for="mlk">Link del menú para tus clientes</label><input id="mlk" readonly value="">
-  <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="alt sm" id="mcp">Copiar link</button><a class="btn alt sm" id="mwa" target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a><a class="btn alt sm" id="mver" target="_blank" rel="noopener noreferrer">Ver el menú</a></div><div id="mcs" aria-live="polite"></div>
+  <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="alt sm" id="mcp">Copiar link</button><a class="btn alt sm" id="mwa" target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a><a class="btn alt sm" id="mver" target="_blank">Ver el menú</a></div><div id="mcs" aria-live="polite"></div>
   <a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios de la zona</a>
   <button class="alt" id="moff" style="margin-top:12px;opacity:.85">Ocultar mi menú (desactivarlo)</button><div id="moffm" aria-live="polite"></div></div>
   <div class="card"><div id="magotados" class="mute" style="margin:0 0 10px"></div><div id="mg"></div>
@@ -879,13 +1000,17 @@ async function menuTab() {
   mver.href = mlk.value;
   const moff = document.getElementById('moff');
   if (moff) moff.onclick = async e => {
-    if (!confirm('¿Ocultar tu menú? Dejará de verse para los clientes hasta que lo actives de nuevo.')) return;
+    if (!confirm('¿Ocultar tu menú? Dejará de verse para los clientes hasta que lo actives de nuevo. Si tenés los pedidos activados, se apagan también.')) return;
     const b = e.target; b.disabled = true;
     try {
       const r = await rpc('biz_menu_toggle', { p_slug: slug, p_pin: pin, p_on: false });
       biz.menu_enabled = !!(r && r.menu_enabled);
-      flash(document.getElementById('moffm'), 'Menú oculto. Lo podés activar cuando quieras.', true);
-      setTimeout(() => menuTab(), 700);
+      if (!biz.menu_enabled && biz.modulos) biz.modulos.pedidos = false;
+      setTimeout(() => {
+        panel('menu');
+        const mm = document.getElementById('mm');
+        if (mm) flash(mm, 'Menú oculto. Los pedidos se apagaron también: el pedido se hace desde el menú. Lo podés volver a activar desde Ajustes.', true);
+      }, 700);
     } catch (err) { b.disabled = false; flash(document.getElementById('moffm'), err.message, false); }
   };
   const normCat = s => String(s ?? '').trim().slice(0, 40);
