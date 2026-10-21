@@ -384,7 +384,9 @@ async function pedidosTab() {
       if (!P.length) { plist.innerHTML = '<div class="card"><p class="mute" style="margin:0">No hay pedidos esperando. Cuando un cliente pida desde el menú, aparece acá y el sello se suma al entregarlo.</p></div>'; return; }
       plist.innerHTML = P.map(o => {
         const its = (o.items || []).map(i => `<li class="olit"><span class="oq">${i.q || 1}×</span> ${esc(i.n)}${i.e ? ' ' + esc(i.e) : ''} <span class="mute">${money.format(Number(i.p) || 0)}</span></li>`).join('');
-        return `<div class="ocard"><div class="ohead"><b>${esc(o.cliente)}</b><span class="mute">${hace(o.creado)}</span></div><ul class="olits">${its}</ul>${o.nota ? `<p class="onota">💬 ${esc(o.nota)}</p>` : ''}<div class="ototal">Total ${money.format(Number(o.total) || 0)} <span class="mute" style="font-weight:400">· lo cargó el cliente</span></div><div class="erow"><button class="sm" data-e="${o.id}">Entregar + 1 sello</button><button class="alt sm" data-c="${o.id}">Cancelar pedido</button></div></div>`;
+        const orig = o.origen || 'llevar';
+        const tag = orig === 'mesa' && o.mesa ? `🍽️ Mesa ${esc(o.mesa)}` : orig === 'retirar' ? '🛍️ Retirar' : '🥡 Para llevar';
+        return `<div class="ocard"><div class="ohead"><b>${esc(o.cliente)}</b><span class="mute">${tag} · ${hace(o.creado)}</span></div><ul class="olits">${its}</ul>${o.nota ? `<p class="onota">💬 ${esc(o.nota)}</p>` : ''}<div class="ototal">Total ${money.format(Number(o.total) || 0)} <span class="mute" style="font-weight:400">· lo cargó el cliente</span></div><div class="erow"><button class="sm" data-e="${o.id}">Entregar + 1 sello</button><button class="alt sm" data-c="${o.id}">Cancelar pedido</button></div></div>`;
       }).join('');
       plist.querySelectorAll('[data-e]').forEach(b => b.onclick = async () => {
         b.disabled = true;
@@ -838,7 +840,9 @@ async function menuView() {
     const msg = document.getElementById('pmsg'), btn = document.getElementById('pedir');
     if (btn) btn.disabled = true;
     try {
-      await rpc('pedido_crear', { p_slug: slug, p_codigo: code, p_items: cart.map(x => ({ n: x.n, p: x.p, q: x.q, e: x.e })), p_total: total(), p_cliente: nombre || null, p_nota: (document.getElementById('pnota')?.value || '').trim() });
+      const origen = document.querySelector('input[name="porigen"]:checked')?.value || 'llevar';
+      const mesa = (document.getElementById('pmesa')?.value || '').trim();
+      await rpc('pedido_crear', { p_slug: slug, p_codigo: code, p_items: cart.map(x => ({ n: x.n, p: x.p, q: x.q, e: x.e })), p_total: total(), p_cliente: nombre || null, p_nota: (document.getElementById('pnota')?.value || '').trim(), p_origen: origen, p_mesa: origen === 'mesa' ? mesa : null });
       cart = []; renderCart();
       msg.innerHTML = '<div class="msg ok">✓ ¡Pedido enviado! Te lo preparamos en el local.</div>';
     } catch (e) { msg.innerHTML = `<div class="msg err" role="alert">${esc(e.message)}</div>`; if (btn) btn.disabled = false; }
@@ -877,12 +881,25 @@ async function menuView() {
     if (!box) return;
     if (!conPedidos || !cart.length) { box.innerHTML = ''; return; }
     box.innerHTML = `<div class="card"><h2>Tu pedido</h2><ul class="mlist">${cart.map((x, i) => `<li class="mrow"><span class="memoji" aria-hidden="true">${esc(x.e || '🛒')}</span><div class="mtxt"><b>${esc(x.n)}</b><div class="mute">${money.format(x.p)} c/u</div></div><span class="ebtns"><button class="alt sm" data-less="${i}" aria-label="Quitar uno">−</button><b class="oq">${x.q}</b><button class="alt sm" data-plus="${i}" aria-label="Agregar uno">+</button></span></li>`).join('')}</ul>
-      <div class="ototal">Total ${money.format(total())}</div>
-      <label for="pnota">Nota para el local (opcional)</label><input id="pnota" maxlength="120" placeholder="Ej: sin azúcar, para llevar">
-      <button id="pedir">Pedir y ganar mi sello</button>
-      <p class="mute" style="text-align:center;margin:10px 0 0">Pagás en el local. Cuando te entreguen el pedido te sumamos el sello.</p></div>`;
+    <div style="margin-top:12px">
+      <p class="mute" style="margin:0 0 8px">¿Cómo querés recibirlo?</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <label class="consent" style="margin:0"><input type="radio" name="porigen" value="mesa" checked> En mesa</label>
+        <label class="consent" style="margin:0"><input type="radio" name="porigen" value="llevar"> Para llevar</label>
+        <label class="consent" style="margin:0"><input type="radio" name="porigen" value="retirar"> Retirar</label>
+      </div>
+      <div id="mesaWrap" style="margin-top:10px"><label for="pmesa">Nº de mesa</label><input id="pmesa" inputmode="numeric" maxlength="6" placeholder="Ej: 4"></div>
+    </div>
+    <div class="ototal">Total ${money.format(total())}</div>
+    <label for="pnota">Nota para el local (opcional)</label><input id="pnota" maxlength="120" placeholder="Ej: sin azúcar, etc.">
+    <button id="pedir">Pedir y ganar mi sello</button>
+    <p class="mute" style="text-align:center;margin:10px 0 0">Pagás en el local. Cuando te entreguen el pedido te sumamos el sello.</p></div>`;
     box.querySelectorAll('[data-less]').forEach(b => b.onclick = () => { const i = +b.dataset.less; cart[i].q--; if (cart[i].q <= 0) cart.splice(i, 1); renderCart(); });
     box.querySelectorAll('[data-plus]').forEach(b => b.onclick = () => { cart[+b.dataset.plus].q++; renderCart(); });
+    const radios = box.querySelectorAll('input[name="porigen"]');
+    const mw = document.getElementById('mesaWrap');
+    const toggleM = () => { if (!mw) return; mw.style.display = (document.querySelector('input[name="porigen"]:checked')?.value === 'mesa') ? '' : 'none'; };
+    radios.forEach(r => r.onchange = toggleM); toggleM();
     document.getElementById('pedir').onclick = pedir;
   };
   const misPedidos = async () => {
