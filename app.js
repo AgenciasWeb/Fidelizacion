@@ -936,7 +936,7 @@ async function menuView() {
     pp.textContent = nota ? nota : money.format(Number(x.price) || 0);
     pd.textContent = x.description || '';
     padd.style.display = x.available ? '' : 'none';
-    padd.textContent = conPedidos ? 'Sumar al pedido' : 'Crear mi tarjeta para pedir';
+    padd.textContent = conPedidos ? (x.available ? 'Sumar al pedido' : 'Agotado') : 'Crear mi tarjeta para pedir';
     pmodal.classList.add('on');
   };
   const render = () => {
