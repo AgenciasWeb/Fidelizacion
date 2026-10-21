@@ -160,6 +160,10 @@ async function customerView() {
     };
     return;
   }
+  // Un acierto devuelve un objeto; un código que ya no existe devuelve null.
+  let poll = null;
+  const stopPoll = () => { if (poll) { clearInterval(poll); poll = null; } };
+  const startPoll = () => { stopPoll(); poll = setInterval(() => { if (!document.hidden && !document.querySelector('.msg.err')) draw(); }, 10000); };
   async function draw() {
     try {
       const c = await rpc('get_card', { p_slug: slug, p_code: saved });
@@ -180,13 +184,21 @@ async function customerView() {
       document.getElementById('del').onclick = async e => {
         e.preventDefault();
         if (!confirm('¿Borrar tu tarjeta de ' + biz.name + '? Se eliminan tu nombre, teléfono y todos tus sellos. No se puede deshacer.')) return;
-        clearInterval(poll);
+        stopPoll();
         try { await rpc('delete_my_card', { p_slug: slug, p_code: saved }); localStorage.removeItem('code_' + slug); customerView(); }
-        catch (err) { flash(document.getElementById('dm'), err.message, false); poll = setInterval(() => { if (!document.hidden) draw(); }, 10000); }
+        catch (err) { flash(document.getElementById('dm'), err.message, false); startPoll(); }
       };
-    } catch (e) { $app.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+    } catch (e) {
+      // Si el servidor bloqueó por demasiados intentos, NO reintentamos solos:
+      // seguir insistiendo solo alarga el bloqueo de la IP.
+      stopPoll();
+      $app.innerHTML = `<div class="msg err">${esc(e.message)}</div><p class="legal" style="text-align:center"><a href="#" id="rt">Volver a intentar</a></p>`;
+      const rt = document.getElementById('rt');
+      if (rt) rt.onclick = ev => { ev.preventDefault(); startPoll(); draw(); };
+    }
   }
-  await draw(); poll = setInterval(() => { if (!document.hidden) draw(); }, 10000);
+  await draw();
+  startPoll();
 }
 
 /* ---------------- NEGOCIO ---------------- */
@@ -207,7 +219,7 @@ function posterView() {
   $app.innerHTML = `<div class="card" style="text-align:center;padding:28px">${bhero('Escaneá y sumá sellos', biz.name, 'Escaneá el código y creá tu tarjeta', biz.stamp_emoji || '⭐')}<div class="qr" style="width:280px" role="img" aria-label="Código QR para escanear y crear tu tarjeta de ${esc(biz.name)}">${qr(location.origin + location.pathname + '?b=' + slug)}</div><p class="mute">Premio: ${esc(biz.reward_emoji || '🎁')} ${esc(biz.reward)}</p></div><button class="noprint" id="prn">Imprimir</button>`;
   document.getElementById('prn').onclick = () => window.print();
 }
-function stopCam() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } }
+function stopCam() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } const ov = document.getElementById('scanov'); if (ov) ov.remove(); }
 
 /* Avisos para el dueño: premios por canjear, clientes nuevos hoy y clientes
    que hace mucho que no vienen. Se cargan aparte para no demorar el panel. */
@@ -237,64 +249,161 @@ async function cargarAvisos() {
 }
 
 function panel(tab) {
-  if (!({ stamp: 1, list: 1, stats: 1, cfg: 1, menu: 1 })[tab]) tab = 'stamp';
+  if (!({ stamp: 1, list: 1, stats: 1, cfg: 1, menu: 1, ped: 1 })[tab] || (tab === 'menu' && !biz.menu_enabled) || (tab === 'ped' && !biz.modulos?.pedidos)) tab = 'stamp';
   if (menuDirty && tab !== 'menu' && !confirm('Tenés cambios sin guardar en el menú. ¿Salir sin guardar?')) return;
   stopCam(); stopMenuWarn();
+  if (stampIv) { clearInterval(stampIv); stampIv = null; }
+  if (pedIv) { clearInterval(pedIv); pedIv = null; }
   legalFooter();
-  const T = [['stamp', 'Sumar sello'], ['list', 'Clientes'], ['stats', 'Resumen'], ['cfg', 'Ajustes'], ['menu', 'Menú']];
+  const T = [['stamp', 'Mostrador']];
+  if (biz.modulos?.pedidos) T.push(['ped', 'Pedidos']);
+  T.push(['list', 'Clientes'], ['stats', 'Resumen'], ['cfg', 'Ajustes']);
+  if (biz.menu_enabled) T.push(['menu', 'Menú']);
   $app.innerHTML = `${bhero('Panel del negocio', biz.name, '', biz.stamp_emoji || biz.reward_emoji || '⚙️', true)}${installHtml('panel')}<div id="avisos"></div><div class="tabs${T.length > 4 ? ' t5' : ''}" role="tablist" aria-label="Secciones del panel">${T.map(t => `<button role="tab" aria-selected="${t[0] === tab}" aria-controls="v" class="${t[0] === tab ? 'on' : ''}" data-t="${t[0]}">${t[1]}</button>`).join('')}</div><div id="v" role="tabpanel" tabindex="0"></div>`;
   document.querySelectorAll('[data-t]').forEach(b => b.onclick = () => panel(b.dataset.t));
   cargarAvisos();
-  ({ stamp: stampTab, list: listTab, stats: statsTab, cfg: cfgTab, menu: menuTab })[tab]();
+  ({ stamp: stampTab, list: listTab, stats: statsTab, cfg: cfgTab, menu: menuTab, ped: pedidosTab })[tab]();
 }
 
+/* ---- MODO MOSTRADOR: dar un sello en un toque, para un negocio que está a full ----
+   Idea: el sello tiene que ser consecuencia de algo que el negocio ya está haciendo.
+   Acá no se escribe ni se busca: se toca al cliente y ya está. */
+let stampIv = null;
 async function stampTab() {
-  v.innerHTML = `<div class="card"><label for="q">Buscar cliente por nombre o teléfono</label><input id="q" autocomplete="off" placeholder="Escribí un nombre">
-  ${biz.allow_double ? '<label class="consent" style="font-size:15px"><input type="checkbox" id="dbl"> Sumar 2 sellos (compra grande)</label>' : ''}<div id="res"></div><div id="m" aria-live="polite"></div>
-  <button class="alt" id="cam">Escanear QR del cliente con la cámara</button><video id="vid" playsinline muted hidden aria-label="Vista de la cámara para escanear el código del cliente"></video></div>`;
-  let L = [];
+  v.innerHTML = `<div class="card">
+    <button id="scan" class="scanbtn">📷 Escanear el QR del cliente</button>
+    <label for="q">Buscar por nombre o código</label>
+    <input id="q" autocomplete="off" inputmode="search" placeholder="Ej: Ana, o el código de su tarjeta">
+    ${biz.allow_double ? '<label class="consent" style="font-size:15px;margin-top:10px"><input type="checkbox" id="dbl"> Sellar 2 sellos por visita</label>' : ''}
+    <div id="bnr" aria-live="polite"></div><div id="res"></div></div>`;
+  const q = document.getElementById('q'), bnr = document.getElementById('bnr'), res = document.getElementById('res');
+  let L = [], busy = false;
+  const antig = c => Date.now() - new Date(c.last_seen || 0).getTime();
+  const porVisitas = (a, b) => (b.visits || 0) - (a.visits || 0) || antig(a) - antig(b);
+  const porReciente = (a, b) => antig(a) - antig(b);
+  const tile = c => {
+    const listo = c.stamps >= biz.stamps_needed;
+    return `<button class="mtile${listo ? ' done' : ''}" data-c="${esc(c.code)}"><b>${esc(c.name)}</b><span class="mp">${esc(c.phone || '')}</span><span class="ms">${listo ? '🎁 Premio listo: tocá para canjear' : c.stamps + '/' + biz.stamps_needed + ' · faltan ' + (biz.stamps_needed - c.stamps)}</span></button>`;
+  };
   const render = () => {
     const t = q.value.trim().toLowerCase();
-    const f = L.filter(c => !t || c.name.toLowerCase().includes(t) || c.phone.includes(t) || c.code.toLowerCase() === t).slice(0, 30);
-    res.innerHTML = f.length ? f.map(c => {
-      const done = c.stamps >= biz.stamps_needed;
-      const tb = (biz.tiers || []).filter(t => c.stamps >= t.at && !(c.claimed || []).includes(t.at)).map(t => '<button class="alt sm" data-f="biz_claim" data-at="' + t.at + '" data-c="' + esc(c.code) + '">Canjear: ' + esc(t.reward) + '</button>').join('');
-      return `<div class="row" style="flex-wrap:wrap"><div><b>${esc(c.name)}</b><div class="mute">${esc(c.phone)} · ${c.stamps}/${biz.stamps_needed} sellos</div></div>
-      <button class="sm" data-f="${done ? 'biz_redeem' : 'biz_stamp'}" data-c="${esc(c.code)}">${done ? 'Canjear premio' : 'Sumar sello'}</button>${tb}</div>`;
-    }).join('') : '<p class="mute" style="margin-top:12px">No hay clientes con ese nombre. Si es nuevo, que cree su tarjeta con el link o la tarjeta NFC.</p>';
-    res.querySelectorAll('button').forEach(b => b.onclick = () => act(b.dataset.f, b.dataset.c, +b.dataset.at));
+    if (t) {
+      const f = L.filter(c => (c.name || '').toLowerCase().includes(t) || (c.phone || '').includes(t) || (c.code || '').toLowerCase() === t).slice(0, 30);
+      res.innerHTML = f.length ? '<div class="mgrid">' + f.map(tile).join('') + '</div>' : '<p class="mute" style="margin-top:12px">No hay clientes con ese nombre. Si es nuevo, que cree su tarjeta con el link o la tarjeta NFC.</p>';
+    } else {
+      const hab = [...L].sort(porVisitas).slice(0, 12);
+      const rec = [...L].sort(porReciente).filter(c => !hab.includes(c)).slice(0, 12);
+      res.innerHTML = (hab.length ? '<p class="msec">Habituales</p><div class="mgrid">' + hab.map(tile).join('') + '</div>' : '')
+        + (rec.length ? '<p class="msec">Los que vinieron hace poco</p><div class="mgrid">' + rec.map(tile).join('') + '</div>' : '')
+        + (!L.length ? '<p class="mute" style="margin-top:12px">Todavía no hay clientes. Compartí el link o la tarjeta NFC.</p>' : '');
+    }
+    res.querySelectorAll('.mtile').forEach(b => b.onclick = () => tocar(b.dataset.c));
   };
-  const load = async () => { try { L = await rpc('biz_customers', { p_slug: slug, p_pin: pin }); render(); } catch (e) { flash(m, e.message, false); } };
-  let busy = false;
-  const act = async (fn, code, at) => {
+  const load = async () => { try { L = await rpc('biz_customers', { p_slug: slug, p_pin: pin }); render(); } catch (e) { bnr.innerHTML = `<div class="msg err" role="alert">${esc(e.message)}</div>`; } };
+  const banner = (txt, code, tier, completo) => {
+    bnr.innerHTML = `<div class="mbanner"><span>${esc(txt)}</span>${completo ? '<button class="undo" id="rdm">🎁 Canjear premio</button>' : ''}${tier ? `<button class="undo" id="clm">Canjear ${esc(tier.reward)}</button>` : ''}${code ? '<button class="undo" id="und">Deshacer</button>' : ''}</div>`;
+    const u = document.getElementById('und');
+    if (u) u.onclick = async () => { u.disabled = true; try { await rpc('biz_undo', { p_slug: slug, p_pin: pin, p_code: code }); bnr.innerHTML = '<div class="mbanner">✓ Sello deshecho</div>'; load(); } catch (e) { bnr.innerHTML = `<div class="msg err" role="alert">${esc(e.message)}</div>`; } };
+    const cl = document.getElementById('clm');
+    if (cl) cl.onclick = async () => { cl.disabled = true; try { const r = await rpc('biz_claim', { p_slug: slug, p_pin: pin, p_code: code, p_at: tier.at }); bnr.innerHTML = `<div class="mbanner">✓ Canjeado: ${esc(r.reward)}</div>`; load(); } catch (e) { bnr.innerHTML = `<div class="msg err" role="alert">${esc(e.message)}</div>`; } };
+    const rd = document.getElementById('rdm');
+    if (rd) rd.onclick = async () => { rd.disabled = true; try { const r = await rpc('biz_redeem', { p_slug: slug, p_pin: pin, p_code: code }); bnr.innerHTML = `<div class="mbanner">🎁 Premio canjeado a ${esc(r.name)}. La tarjeta se reinició</div>`; load(); } catch (e) { bnr.innerHTML = `<div class="msg err" role="alert">${esc(e.message)}</div>`; } };
+  };
+  const tocar = async code => {
     if (busy) return;
-    busy = true; res.querySelectorAll('button').forEach(b => b.disabled = true);
+    const c = L.find(x => x.code === code);
+    const listo = c && c.stamps >= biz.stamps_needed;
+    if (listo && !confirm(`${c.name} tiene el premio listo (${c.stamps}/${biz.stamps_needed}). ¿Canjear ahora?`)) return;
+    busy = true;
     try {
-      const args = { p_slug: slug, p_pin: pin, p_code: code }; if (fn === 'biz_claim') args.p_at = at;
-      if (fn === 'biz_stamp') args.p_qty = document.getElementById('dbl')?.checked ? 2 : 1;
-      const r = await rpc(fn, args);
-      flash(m, fn === 'biz_stamp' ? `Sello sumado a ${r.name}: ${r.stamps} de ${r.needed}` + (r.bonus ? ' 🎂 (incluye 1 de regalo por su cumpleaños)' : '') : fn === 'biz_claim' ? `Canjeado a ${r.name}: ${r.reward}` : `Premio canjeado: ${r.name}. Tarjeta reiniciada`, true);
-      q.value = ''; stopCam(); vid.hidden = true; load();
-      if (fn === 'biz_stamp') { m.insertAdjacentHTML('beforeend', '<button class="alt" id="und">Deshacer este sello</button>');
-        und.onclick = async () => { und.disabled = true; try { await rpc('biz_undo', { p_slug: slug, p_pin: pin, p_code: code }); flash(m, 'Sello deshecho', true); load(); } catch (e) { flash(m, e.message, false); } }; }
-    } catch (e) { flash(m, e.message, false); render(); }
+      if (listo) {
+        const r = await rpc('biz_redeem', { p_slug: slug, p_pin: pin, p_code: code });
+        bnr.innerHTML = `<div class="mbanner">🎁 Premio canjeado a ${esc(r.name)}. La tarjeta se reinició</div>`;
+        await load();
+      } else {
+        const args = { p_slug: slug, p_pin: pin, p_code: code };
+        const dbl = document.getElementById('dbl');
+        if (dbl && dbl.checked) args.p_qty = 2;
+        const r = await rpc('biz_stamp', args);
+        await load();
+        const t = (biz.tiers || []).filter(x => r.stamps >= x.at && !(c && (c.claimed || []).includes(x.at))).sort((a, b) => a.at - b.at)[0];
+        const completo = r.stamps >= r.needed;
+        banner(`✓ Sello a ${r.name}: ${r.stamps} de ${r.needed}` + (r.bonus ? ' 🎂' : '') + (completo ? ' · ¡tarjeta completa!' : ''), code, t ? { at: t.at, reward: t.reward } : null, completo);
+        res.querySelectorAll('.mtile').forEach(el => { if (el.dataset.c === code) el.classList.add('hit'); });
+      }
+    } catch (e) { bnr.innerHTML = `<div class="msg err" role="alert">${esc(e.message)}</div>`; }
     finally { busy = false; }
   };
-  q.oninput = render; load();
-  cam.onclick = async () => {
+  q.oninput = render;
+  load();
+  if (stampIv) clearInterval(stampIv);
+  stampIv = setInterval(() => { if (!document.hidden && !busy) load(); }, 20000);
+  const scan = document.getElementById('scan');
+  scan.onclick = async () => {
+    const ov = document.createElement('div');
+    ov.id = 'scanov';
+    ov.innerHTML = '<video playsinline muted></video><div class="sh"><div class="box"></div></div><p class="hint">Apuntá al código QR del cliente</p><button class="x" aria-label="Cerrar el escáner">✕</button>';
+    document.body.appendChild(ov);
+    const close = () => stopCam();
+    ov.querySelector('.x').onclick = close;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      vid.srcObject = stream; vid.hidden = false; await vid.play();
+      const sv = ov.querySelector('video');
+      sv.srcObject = stream; await sv.play();
       const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
-      (function scan() {
-        if (!stream) return;
-        if (vid.videoWidth) { cv.width = vid.videoWidth; cv.height = vid.videoHeight; cx.drawImage(vid, 0, 0);
+      let leido = false;
+      (function loop() {
+        if (leido || !stream) return;
+        if (sv.videoWidth) {
+          cv.width = sv.videoWidth; cv.height = sv.videoHeight; cx.drawImage(sv, 0, 0);
           const r = jsQR(cx.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height);
-          if (r && /^[A-Z0-9]{6,8}$/i.test(r.data)) { return act('biz_stamp', r.data.toUpperCase()); } }
-        requestAnimationFrame(scan);
+          if (r && /^[A-Z0-9]{6,8}$/i.test(r.data.trim())) { leido = true; close(); tocar(r.data.trim().toUpperCase()); return; }
+        }
+        requestAnimationFrame(loop);
       })();
-    } catch { flash(m, 'No se pudo abrir la cámara. Buscá al cliente por nombre', false); }
+    } catch { close(); bnr.innerHTML = '<div class="msg err" role="alert">No se pudo abrir la cámara. Buscá al cliente por nombre.</div>'; }
   };
+}
+
+/* ---- PEDIDOS: el sello se suma al entregar el pedido (módulo opt-in) ---- */
+let pedIv = null;
+const moneyAR = () => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2 });
+async function pedidosTab() {
+  v.innerHTML = '<div id="pbnr" aria-live="polite"></div><div id="plist"><p class="mute">Cargando…</p></div>';
+  const pbnr = document.getElementById('pbnr'), plist = document.getElementById('plist'), money = moneyAR();
+  let ultimo = null;
+  const hace = t => { const m = Math.round((Date.now() - new Date(t).getTime()) / 60000); return m < 1 ? 'recién' : m < 60 ? 'hace ' + m + ' min' : 'hace ' + Math.round(m / 60) + ' h'; };
+  const beep = () => { try { const C = window.AudioContext || window.webkitAudioContext; if (!C) return; const c = new C(), o = c.createOscillator(), g = c.createGain(); o.connect(g); g.connect(c.destination); o.type = 'sine'; o.frequency.value = 880; g.gain.setValueAtTime(.0001, c.currentTime); g.gain.exponentialRampToValueAtTime(.18, c.currentTime + .02); g.gain.exponentialRampToValueAtTime(.0001, c.currentTime + .35); o.start(); o.stop(c.currentTime + .36); setTimeout(() => c.close(), 600); } catch (e) {} };
+  const load = async () => {
+    try {
+      const P = await rpc('pedidos_listar', { p_slug: slug, p_pin: pin });
+      if (ultimo !== null && P.length > ultimo) beep();
+      ultimo = P.length;
+      if (!P.length) { plist.innerHTML = '<div class="card"><p class="mute" style="margin:0">No hay pedidos esperando. Cuando un cliente pida desde el menú, aparece acá y el sello se suma al entregarlo.</p></div>'; return; }
+      plist.innerHTML = P.map(o => {
+        const its = (o.items || []).map(i => `<li class="olit"><span class="oq">${i.q || 1}×</span> ${esc(i.n)}${i.e ? ' ' + esc(i.e) : ''} <span class="mute">${money.format(Number(i.p) || 0)}</span></li>`).join('');
+        return `<div class="ocard"><div class="ohead"><b>${esc(o.cliente)}</b><span class="mute">${hace(o.creado)}</span></div><ul class="olits">${its}</ul>${o.nota ? `<p class="onota">💬 ${esc(o.nota)}</p>` : ''}<div class="ototal">Total ${money.format(Number(o.total) || 0)} <span class="mute" style="font-weight:400">· lo cargó el cliente</span></div><div class="erow"><button class="sm" data-e="${o.id}">Entregar + 1 sello</button><button class="alt sm" data-c="${o.id}">Cancelar pedido</button></div></div>`;
+      }).join('');
+      plist.querySelectorAll('[data-e]').forEach(b => b.onclick = async () => {
+        b.disabled = true;
+        try {
+          const r = await rpc('pedido_entregar', { p_slug: slug, p_pin: pin, p_id: +b.dataset.e });
+          const s = r.sello || {};
+          pbnr.innerHTML = `<div class="mbanner">✓ Pedido entregado · sello de ${esc(s.name || 'cliente')}: ${s.stamps} de ${s.needed}</div>`;
+          load();
+        } catch (e) { pbnr.innerHTML = `<div class="msg err" role="alert">${esc(e.message)}</div>`; b.disabled = false; }
+      });
+      plist.querySelectorAll('[data-c]').forEach(b => b.onclick = async () => {
+        if (!confirm('¿Cancelar este pedido? El cliente va a tener que pedir de nuevo.')) return;
+        b.disabled = true;
+        try { await rpc('pedido_cancelar', { p_slug: slug, p_pin: pin, p_id: +b.dataset.c }); pbnr.innerHTML = '<div class="mbanner">Pedido cancelado</div>'; load(); }
+        catch (e) { pbnr.innerHTML = `<div class="msg err" role="alert">${esc(e.message)}</div>`; b.disabled = false; }
+      });
+    } catch (e) { plist.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+  };
+  await load();
+  if (pedIv) clearInterval(pedIv);
+  pedIv = setInterval(() => { if (!document.hidden) load(); }, 8000);
 }
 
 let inst = null;
@@ -435,7 +544,7 @@ async function walletView() {
     return card + `<div class="wrm"><button class="alt sm" data-rm="${esc(r.sl)}">Quitar de este celular</button></div>`;
   }).join('');
   w.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
-    if (confirm('¿Quitar esta tarjeta de este celular? No perdés tus sellos: para recuperarla después, pedile al negocio que te la recupere.')) { localStorage.removeItem('code_' + b.dataset.rm); walletView(); }
+    if (confirm('¿Quitar esta tarjeta de este celular? Vas a perder el acceso a ella y a sus sellos. Guardá el código antes de quitarla: sin el código no vas a poder volver a verla.')) { localStorage.removeItem('code_' + b.dataset.rm); walletView(); }
   });
   const ib = installHtml('card');
   if (ib) w.insertAdjacentHTML('beforeend', ib);
@@ -506,8 +615,8 @@ function cfgTab() {
   <label for="c23">Dirección del negocio</label><input id="c23" maxlength="120" value="${esc(biz.address || '')}" placeholder="Calle 123, Ciudad">
   <label for="c24">Teléfono o WhatsApp del negocio</label><input id="c24" type="tel" maxlength="40" value="${esc(biz.phone || '')}" placeholder="Ej: 11 5555-5555">
   <label for="c25">Email de contacto</label><input id="c25" type="email" maxlength="120" value="${esc(biz.email || '')}" placeholder="hola@tunegocio.com">
-  <label for="c5">Minutos mínimos entre sellos del mismo cliente (0 = sin límite)</label><input id="c5" type="number" min="0" value="${biz.min_minutes}">
-    <label for="c9">Los sellos vencen después de X días sin venir (0 = nunca)</label><input id="c9" type="number" min="0" value="${biz.expiry_days}">
+  <label for="c5">Minutos mínimos entre sellos del mismo cliente (0 = sin límite)</label><input id="c5" type="number" min="0" max="10080" value="${biz.min_minutes}">
+    <label for="c9">Los sellos vencen después de X días sin venir (0 = nunca)</label><input id="c9" type="number" min="0" max="3650" value="${biz.expiry_days}">
   <label for="c10">Sellos de regalo al crear la tarjeta (0 a 5)</label><input id="c10" type="number" min="0" max="5" value="${biz.welcome_stamps || 0}">
   <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="c11" style="width:auto" ${biz.allow_double ? 'checked' : ''}> Permitir sumar 2 sellos en una compra</label>
   <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="c16" style="width:auto" ${biz.ask_birthday ? 'checked' : ''}> Pedir el cumpleaños al crear la tarjeta</label>
@@ -517,6 +626,9 @@ function cfgTab() {
   <p class="mute" style="margin:6px 0 0">Estas dos opciones funcionan si activaste “Pedir el cumpleaños”.</p>
   <label>Premios intermedios (opcional): se canjean al llegar a ese sello, sin reiniciar la tarjeta</label>
   ${[0, 1, 2].map(i => '<div style="display:flex;gap:8px;margin-top:8px"><input id="tn' + i + '" type="number" min="1" placeholder="Sello nº" style="width:36%" value="' + ((biz.tiers || [])[i]?.at || '') + '"><input id="tr' + i + '" maxlength="60" placeholder="Premio (ej: Café gratis)" value="' + esc((biz.tiers || [])[i]?.reward || '') + '"></div>').join('')}
+  ${(biz.modulos && 'pedidos' in biz.modulos) ? `<h2 style="margin-top:18px">Módulos</h2>
+  <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="c30" style="width:auto" ${biz.modulos.pedidos ? 'checked' : ''}> Activar pedidos</label>
+  <p class="mute" style="margin:6px 0 0">Los clientes arman su pedido en el menú y a vos te aparece en la pestaña <b>Pedidos</b>: un toque y le entregás el pedido + se le suma el sello. Si no lo activás, la tarjeta sigue funcionando igual.</p>` : ''}
   <label for="c6">Nuevo PIN (6 a 12 números; vacío = no cambiarlo)</label><input id="c6" type="password" inputmode="numeric">
   <button id="sv">Guardar cambios</button><button class="alt" id="lo">Cerrar sesión</button><div id="m"></div>
   <p class="mute" style="margin-top:14px">Link de tu tarjeta para clientes:<br><b>${esc(location.origin + location.pathname)}?b=${esc(slug)}</b></p><a class="btn alt" style="display:block;margin-top:8px" target="_blank" href="?b=${esc(slug)}&cartel=1">Imprimir cartel con QR</a></div>`;
@@ -526,12 +638,37 @@ function cfgTab() {
   c22.onchange = () => setBg(c22.checked ? '' : c21.value);
   lo.onclick = () => { try { sessionStorage.removeItem('pin_' + slug); } catch {} location.reload(); };
   sv.onclick = async () => {
-    const a = { p_slug: slug, p_pin: pin, p_name: c1.value.trim() || biz.name, p_needed: +c2.value, p_reward: c3.value.trim() || 'Premio', p_color: c4.value, p_minutes: +c5.value || 0, p_new_pin: c6.value, p_expiry: +c9.value || 0, p_welcome: +c10.value || 0, p_double: c11.checked, p_emoji: c12.value.trim() || '⭐', p_color2: c13.value, p_notice: c14.value.trim(), p_ready: c15.value.trim(), p_ask_bday: c16.checked, p_ask_promo: c17.checked, p_bday_stamp: c18.checked, p_bday_msg: c19.value.trim(),
-      p_tiers: JSON.stringify([0, 1, 2].map(i => ({ at: +document.getElementById('tn' + i).value, reward: document.getElementById('tr' + i).value.trim() })).filter(t => t.at && t.reward).sort((x, y) => x.at - y.at)), p_reward_emoji: c20.value.trim() || '🎁' };
+    // Chequeos rápidos con mensaje claro antes de tocar el servidor.
+    const needed = +c2.value, minmin = +c5.value || 0, exp = +c9.value || 0, wel = +c10.value || 0;
+    if (!(needed >= 2 && needed <= 30)) return flash(m, 'Los sellos para el premio deben estar entre 2 y 30', false);
+    if (minmin < 0 || minmin > 10080) return flash(m, 'Los minutos entre sellos deben estar entre 0 y 10080 (7 días)', false);
+    if (exp < 0 || exp > 3650) return flash(m, 'Los días de vencimiento deben estar entre 0 y 3650 (10 años)', false);
+    if (wel < 0 || wel > 5) return flash(m, 'Los sellos de regalo deben estar entre 0 y 5', false);
+    const tierVals = [0, 1, 2].map(i => ({ at: +document.getElementById('tn' + i).value, reward: document.getElementById('tr' + i).value.trim() }));
+    if (tierVals.some(t => t.at && t.reward && (t.at < 1 || t.at > needed - 1))) return flash(m, 'Cada premio intermedio debe ser un sello menor al total (' + (needed - 1) + ')', false);
+    if (tierVals.filter(t => t.at && t.reward).map(t => t.at).some((v, i, arr) => arr.indexOf(v) !== i)) return flash(m, 'No repitas el número de sello en los premios intermedios', false);
+    const a = { p_slug: slug, p_pin: pin, p_name: c1.value.trim() || biz.name, p_needed: needed, p_reward: c3.value.trim() || 'Premio', p_color: c4.value, p_minutes: minmin, p_new_pin: c6.value, p_expiry: exp, p_welcome: wel, p_double: c11.checked, p_emoji: c12.value.trim() || '⭐', p_color2: c13.value, p_notice: c14.value.trim(), p_ready: c15.value.trim(), p_ask_bday: c16.checked, p_ask_promo: c17.checked, p_bday_stamp: c18.checked, p_bday_msg: c19.value.trim(),
+      p_tiers: JSON.stringify(tierVals.filter(t => t.at && t.reward).sort((x, y) => x.at - y.at)), p_reward_emoji: c20.value.trim() || '🎁' };
     const bgVal = c22.checked ? '' : c21.value;
-    try { await rpc('biz_set_bg', { p_slug: slug, p_pin: pin, p_bg: bgVal }); await rpc('biz_update', a); await rpc('biz_set_contact', { p_slug: slug, p_pin: pin, p_address: c23.value.trim(), p_phone: c24.value.trim(), p_email: c25.value.trim() }); if (c6.value) { pin = c6.value; sessionStorage.setItem('pin_' + slug, pin); }
-      biz = { ...biz, name: a.p_name, stamps_needed: a.p_needed, reward: a.p_reward, color: a.p_color, min_minutes: a.p_minutes, expiry_days: a.p_expiry, welcome_stamps: a.p_welcome, allow_double: a.p_double, stamp_emoji: a.p_emoji, color2: a.p_color2, notice: a.p_notice, ready_msg: a.p_ready, ask_birthday: a.p_ask_bday, ask_promo: a.p_ask_promo, birthday_stamp: a.p_bday_stamp, birthday_msg: a.p_bday_msg, tiers: JSON.parse(a.p_tiers), reward_emoji: a.p_reward_emoji, bg_color: bgVal, address: c23.value.trim(), phone: c24.value.trim(), email: c25.value.trim() }; setColor(a.p_color, a.p_color2); legalFooter(); flash(m, 'Cambios guardados', true); }
-    catch (e) { flash(m, e.message, false); }
+    // Se guarda por partes y se avisa EXACTAMENTE qué falló, para no dejar la
+    // tarjeta a medio configurar (ej: fondo nuevo con los colores viejos).
+    const pasos = [];
+    const paso = async (nombre, fn) => { try { await fn(); pasos.push('ok:' + nombre); } catch (e) { pasos.push('err:' + nombre + '|' + e.message); } };
+    await paso('datos', () => rpc('biz_update', a));
+    await paso('contacto', () => rpc('biz_set_contact', { p_slug: slug, p_pin: pin, p_address: c23.value.trim(), p_phone: c24.value.trim(), p_email: c25.value.trim() }));
+    await paso('fondo', () => rpc('biz_set_bg', { p_slug: slug, p_pin: pin, p_bg: bgVal }));
+    const c30 = document.getElementById('c30');
+    if (c30) await paso('modulos', () => rpc('modulo_activar', { p_slug: slug, p_pin: pin, p_modulo: 'pedidos', p_activo: c30.checked }));
+    const fallas = pasos.filter(p => p.startsWith('err:')).map(p => { const [n, m] = p.slice(4).split('|'); return (n === 'datos' ? 'los datos de la tarjeta' : n === 'contacto' ? 'los datos del negocio' : n === 'modulos' ? 'el módulo de pedidos' : 'el color de fondo') + ' (' + m + ')'; });
+    if (fallas.length) {
+      // Si falló el núcleo de la tarjeta, no se aplica nada en pantalla.
+      flash(m, 'No se pudieron guardar: ' + fallas.join(' y '), false);
+      return;
+    }
+    if (c6.value) { pin = c6.value; sessionStorage.setItem('pin_' + slug, pin); }
+    biz = { ...biz, name: a.p_name, stamps_needed: a.p_needed, reward: a.p_reward, color: a.p_color, min_minutes: a.p_minutes, expiry_days: a.p_expiry, welcome_stamps: a.p_welcome, allow_double: a.p_double, stamp_emoji: a.p_emoji, color2: a.p_color2, notice: a.p_notice, ready_msg: a.p_ready, ask_birthday: a.p_ask_bday, ask_promo: a.p_ask_promo, birthday_stamp: a.p_bday_stamp, birthday_msg: a.p_bday_msg, tiers: JSON.parse(a.p_tiers), reward_emoji: a.p_reward_emoji, bg_color: bgVal, address: c23.value.trim(), phone: c24.value.trim(), email: c25.value.trim() };
+    if (c30) biz.modulos = { ...(biz.modulos || {}), pedidos: c30.checked };
+    setColor(a.p_color, a.p_color2); legalFooter(); flash(m, 'Cambios guardados', true);
   };
 }
 
@@ -555,17 +692,83 @@ async function menuView() {
   }
   $app.innerHTML = `${bhero('Menú', biz.name, '<span id="mu">Cargando menú…</span>', '🍽️')}
   <div class="card"><label for="mq">Buscar en el menú</label><input id="mq" type="search" autocomplete="off" placeholder="Ej: café, torta"></div>
+  <div id="misped"></div><div id="cart"></div><div id="pmsg" aria-live="polite"></div>
   <div id="ml"></div>
   <div id="mcontacto"></div>
   ${installHtml('menus')}
   <a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios</a>
   ${volver}`;
   const money = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  /* ---- Carrito y pedido: solo si el negocio tiene el módulo de pedidos ---- */
+  const conPedidos = !!biz.modulos?.pedidos;
+  let cart = [];
+  const total = () => cart.reduce((a, x) => a + (Number(x.p) || 0) * x.q, 0);
+  const enviar = async (code, nombre) => {
+    const msg = document.getElementById('pmsg'), btn = document.getElementById('pedir');
+    if (btn) btn.disabled = true;
+    try {
+      await rpc('pedido_crear', { p_slug: slug, p_codigo: code, p_items: cart.map(x => ({ n: x.n, p: x.p, q: x.q, e: x.e })), p_total: total(), p_cliente: nombre || null, p_nota: (document.getElementById('pnota')?.value || '').trim() });
+      cart = []; renderCart();
+      msg.innerHTML = '<div class="msg ok">✓ ¡Pedido enviado! Te lo preparamos en el local.</div>';
+    } catch (e) { msg.innerHTML = `<div class="msg err" role="alert">${esc(e.message)}</div>`; if (btn) btn.disabled = false; }
+  };
+  const formRegistro = () => {
+    const msg = document.getElementById('pmsg');
+    msg.innerHTML = `<div class="card"><h2>Creá tu tarjeta para pedir</h2><p class="mute" style="margin:0 0 10px">Con tu tarjeta te sumamos el sello de este pedido. Solo tu nombre y tu teléfono.</p>
+      <form id="preg" novalidate><label for="rn">Tu nombre</label><input id="rn" maxlength="80" required>
+      <label for="rp">Tu teléfono</label><input id="rp" type="tel" inputmode="tel" maxlength="20" required>
+      <label class="consent"><input type="checkbox" id="rac" required> Acepto la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a> y el uso de mis datos solo para esta tarjeta de sellos.</label>
+      <button type="submit" id="rgo">Crear mi tarjeta y pedir</button></form></div>`;
+    document.getElementById('preg').onsubmit = async ev => {
+      ev.preventDefault();
+      const go = document.getElementById('rgo');
+      const nom = document.getElementById('rn').value.trim(), tel = document.getElementById('rp').value.replace(/\D/g, '');
+      if (nom.length < 2) return flash(msg, 'Escribí tu nombre', false);
+      if (tel.length < 6) return flash(msg, 'Escribí un teléfono válido', false);
+      if (!document.getElementById('rac').checked) return flash(msg, 'Tenés que aceptar la política de privacidad', false);
+      go.disabled = true;
+      try {
+        const code = await rpc('register_customer', { p_slug: slug, p_name: nom, p_phone: tel, p_birthday: null, p_promo: false });
+        localStorage.setItem('code_' + slug, code);
+        await enviar(code, nom);
+      } catch (e) { go.disabled = false; flash(msg, e.message, false); }
+    };
+  };
+  const pedir = async () => {
+    const code = localStorage.getItem('code_' + slug);
+    if (!code) { formRegistro(); return; }
+    let nombre = '';
+    try { const c = await rpc('get_card', { p_slug: slug, p_code: code }); if (c) nombre = c.name; } catch (e) {}
+    await enviar(code, nombre);
+  };
+  const renderCart = () => {
+    const box = document.getElementById('cart');
+    if (!box) return;
+    if (!conPedidos || !cart.length) { box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="card"><h2>Tu pedido</h2><ul class="mlist">${cart.map((x, i) => `<li class="mrow"><span class="memoji" aria-hidden="true">${esc(x.e || '🛒')}</span><div class="mtxt"><b>${esc(x.n)}</b><div class="mute">${money.format(x.p)} c/u</div></div><span class="ebtns"><button class="alt sm" data-less="${i}" aria-label="Quitar uno">−</button><b class="oq">${x.q}</b><button class="alt sm" data-plus="${i}" aria-label="Agregar uno">+</button></span></li>`).join('')}</ul>
+      <div class="ototal">Total ${money.format(total())}</div>
+      <label for="pnota">Nota para el local (opcional)</label><input id="pnota" maxlength="120" placeholder="Ej: sin azúcar, para llevar">
+      <button id="pedir">Pedir y ganar mi sello</button>
+      <p class="mute" style="text-align:center;margin:10px 0 0">Pagás en el local. Cuando te entreguen el pedido te sumamos el sello.</p></div>`;
+    box.querySelectorAll('[data-less]').forEach(b => b.onclick = () => { const i = +b.dataset.less; cart[i].q--; if (cart[i].q <= 0) cart.splice(i, 1); renderCart(); });
+    box.querySelectorAll('[data-plus]').forEach(b => b.onclick = () => { cart[+b.dataset.plus].q++; renderCart(); });
+    document.getElementById('pedir').onclick = pedir;
+  };
+  const misPedidos = async () => {
+    const box = document.getElementById('misped');
+    if (!box || !conPedidos) return;
+    const code = localStorage.getItem('code_' + slug);
+    if (!code) { box.innerHTML = ''; return; }
+    try {
+      const P = await rpc('pedidos_mios', { p_slug: slug, p_codigo: code });
+      if (!(P || []).some(o => o.estado === 'pendiente')) { box.innerHTML = ''; return; }
+      box.innerHTML = '<div class="card notice">⏳ Tenés un pedido en la barra. Te avisamos cuando esté listo.</div>';
+    } catch (e) { box.innerHTML = ''; }
+  };
   let data = null, last = 0;
   const render = () => {
     const box = document.getElementById('ml'), mu = document.getElementById('mu');
-    if (!box || !mu) return;
-    mu.textContent = data && data.updated ? 'Actualizado el ' + new Date(data.updated).toLocaleDateString('es-AR') : 'Elegí lo que más te guste';
+    if (!box || !mu) return;    mu.textContent = data && data.updated ? 'Actualizado el ' + new Date(data.updated).toLocaleDateString('es-AR') : 'Elegí lo que más te guste';
     if (!data || !data.enabled) { box.innerHTML = '<div class="card"><p class="mute" style="margin:0">Este negocio no tiene menú.</p></div>'; return; }
     const mq = document.getElementById('mq');
     const q = mq ? normText(mq.value) : '';
@@ -587,13 +790,20 @@ async function menuView() {
         const nota = String(x.price_note || '').trim();
         const precio = nota ? `<span class="mprice-v">${esc(nota)}</span>` : `<span class="mprice-v">${money.format(Number(x.price) || 0)}</span>`;
         const dest = x.featured ? '<span class="fdest">⭐ Destacado</span>' : '';
-        return `<li class="mrow${x.available ? '' : ' sold'}${x.featured ? ' feat' : ''}">${em ? `<span class="memoji" aria-hidden="true">${esc(em)}</span>` : ''}<div class="mtxt"><b>${esc(x.name)}${dest}</b>${x.description ? `<div class="mute">${esc(x.description)}</div>` : ''}</div><div class="mprice">${precio}${x.available ? '' : '<span class="badge">Agotado</span>'}</div></li>`;
+        return `<li class="mrow${x.available ? '' : ' sold'}${x.featured ? ' feat' : ''}">${em ? `<span class="memoji" aria-hidden="true">${esc(em)}</span>` : ''}<div class="mtxt"><b>${esc(x.name)}${dest}</b>${x.description ? `<div class="mute">${esc(x.description)}</div>` : ''}</div>${conPedidos && x.available ? `<button class="madd" data-add="${esc(x.name)}" aria-label="Agregar ${esc(x.name)} al pedido">+</button>` : ''}<div class="mprice">${precio}${x.available ? '' : '<span class="badge">Agotado</span>'}</div></li>`;
       }).join('')}</ul>`;
     }).join('');
+    if (conPedidos) box.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
+      const it = (data.items || []).find(x => x.name === b.dataset.add);
+      if (!it) return;
+      const l = cart.find(x => x.n === it.name);
+      if (l) l.q++; else cart.push({ n: it.name, p: Number(it.price) || 0, e: String(it.emoji || '').trim(), q: 1 });
+      renderCart();
+    });
   };
   const load = async () => {
     try {
-      data = await rpc('get_menu', { p_slug: slug }); last = Date.now(); render(); contacto();
+      data = await rpc('get_menu', { p_slug: slug }); last = Date.now(); render(); contacto(); misPedidos();
     }
     catch (e) { const b = document.getElementById('ml'); if (b) b.innerHTML = `<div class="card"><div class="msg err" style="margin:0">${esc(e.message)}</div></div>`; }
   };
@@ -913,6 +1123,7 @@ cookieNotice();
     else { document.title = biz.name + ' · Mis tarjetas'; }
     if (qs.has('cartel')) return posterView();
     try { biz.menu_enabled = !!(await rpc('get_features', { p_slug: slug }))?.menu; } catch { biz.menu_enabled = false; }
+    try { biz.modulos = (await rpc('get_modulos', { p_slug: slug })) || {}; } catch { biz.modulos = {}; }
     if (qs.has('menu') && !isPanel) return menuView();
     const rc = qs.get('c');
     if (!isPanel && rc && /^[A-Z0-9]{6,8}$/i.test(rc)) { try { localStorage.setItem('code_' + slug, rc.toUpperCase()); history.replaceState(null, '', location.pathname + '?b=' + slug); } catch {} }

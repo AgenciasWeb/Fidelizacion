@@ -1,6 +1,14 @@
-﻿# Material interno: NUNCA publicar (GitHub Pages sirve todo lo que este en el repo)
-sql/
-*.zip
-GUIA-*.md
-seguridad-*.sql
-*.local.md
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Logs y temporales
+*.log
+npm-debug.log*
+_test*.html
