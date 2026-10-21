@@ -811,8 +811,21 @@ async function menuView() {
   $app.innerHTML = `${bhero('Menú', biz.name, '<span id="mu">Cargando menú…</span>', '🍽️')}
   <div class="card"><label for="mq">Buscar en el menú</label><input id="mq" type="search" autocomplete="off" placeholder="Ej: café, torta"></div>
   <div id="misped"></div><div id="cart"></div><div id="pmsg" aria-live="polite"></div>
-  <div id="ml"></div>
+  <div class="mwrap"><div id="ml"></div></div>
   <div id="mcontacto"></div>
+  <div id="pmodal" class="pmodal" role="dialog" aria-modal="true">
+    <div class="pmodal-sheet">
+      <div class="pmodal-h"><div id="pmodal-img" class="pmodal-img"></div><button class="pmodal-x" id="pmodal-x" aria-label="Cerrar">✕</button></div>
+      <div class="pmodal-b">
+        <div class="pmodal-row"><div class="pmodal-t" id="pmodal-t"></div><div class="pmodal-p" id="pmodal-p"></div></div>
+        <div class="pmodal-d" id="pmodal-d"></div>
+        <div class="pmodal-act">
+          <button class="alt" id="pmodal-c">Cerrar</button>
+          <button class="padd" id="pmodal-add">Sumar al pedido</button>
+        </div>
+      </div>
+    </div>
+  </div>
   ${installHtml('menus')}
   <a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios</a>
   ${volver}`;
@@ -883,7 +896,32 @@ async function menuView() {
       box.innerHTML = '<div class="card notice">⏳ Tenés un pedido en la barra. Te avisamos cuando esté listo.</div>';
     } catch (e) { box.innerHTML = ''; }
   };
-  let data = null, last = 0;
+  let data = null, last = 0, actItem = null;
+  const pmodal = document.getElementById('pmodal'), pimg = document.getElementById('pmodal-img'), pt = document.getElementById('pmodal-t'), pp = document.getElementById('pmodal-p'), pd = document.getElementById('pmodal-d'), padd = document.getElementById('pmodal-add'), px = document.getElementById('pmodal-x'), pc = document.getElementById('pmodal-c');
+  const closeModal = () => { pmodal.classList.remove('on'); actItem = null; };
+  px.onclick = closeModal; pc.onclick = closeModal;
+  pmodal.onclick = e => { if (e.target === pmodal) closeModal(); };
+  padd.onclick = () => {
+    if (!actItem || !actItem.available) return;
+    if (!conPedidos) { closeModal(); formRegistro(); return; }
+    const l = cart.find(x => x.n === actItem.name);
+    if (l) l.q++; else cart.push({ n: actItem.name, p: Number(actItem.price) || 0, e: String(actItem.emoji || '').trim(), q: 1 });
+    renderCart(); closeModal();
+  };
+  const openItem = x => {
+    actItem = x;
+    pimg.innerHTML = '';
+    const ph = String(x.photo || '').trim();
+    if (ph) { const im = document.createElement('img'); im.src = ph; im.className = 'pmodal-img'; im.alt = x.name; im.onerror = () => { pimg.innerHTML = '<div class="pmodal-ph">' + (String(x.emoji||'').trim() || '🍽️') + '</div>'; }; pimg.appendChild(im); }
+    else { pimg.innerHTML = '<div class="pmodal-ph">' + (String(x.emoji||'').trim() || '🍽️') + '</div>'; }
+    pt.textContent = x.name;
+    const nota = String(x.price_note || '').trim();
+    pp.textContent = nota ? nota : money.format(Number(x.price) || 0);
+    pd.textContent = x.description || '';
+    padd.style.display = x.available ? '' : 'none';
+    padd.textContent = conPedidos ? 'Sumar al pedido' : 'Crear mi tarjeta para pedir';
+    pmodal.classList.add('on');
+  };
   const render = () => {
     const box = document.getElementById('ml'), mu = document.getElementById('mu');
     if (!box || !mu) return;    mu.textContent = data && data.updated ? 'Actualizado el ' + new Date(data.updated).toLocaleDateString('es-AR') : 'Elegí lo que más te guste';
@@ -902,21 +940,23 @@ async function menuView() {
       const info = catInfo[g.c] || {};
       const foto = String(info.photo || '').trim();
       const ico = String(info.emoji || '').trim() || (g.list.map(x => String(x.emoji || '').trim()).find(e => e) || '');
-      const head = g.c ? `<header class="mcover${foto ? '' : ' noimg'}" id="cat-${i}">${foto ? `<img src="${esc(foto)}" alt="" loading="lazy" onerror="this.remove()">` : ''}<div class="mcover-sign">${ico ? `<span class="mcover-ico" aria-hidden="true">${esc(ico)}</span>` : ''}<span class="mcover-t">${esc(g.c)}</span><span class="mcover-n">${g.list.length}</span></div></header>` : '';
-      return head + `<ul class="mlist">${g.list.map(x => {
+      const head = g.c ? `<header class="mhead" id="cat-${i}">${ico ? `<span class="mhead-ico" aria-hidden="true">${esc(ico)}</span>` : ''}<span class="mhead-t">${esc(g.c)}</span><span class="mhead-n">${g.list.length}</span></header>` : '';
+      return head + `<div class="mgrid2">${g.list.map(x => {
         const em = String(x.emoji || '').trim();
+        const ph = String(x.photo || '').trim();
         const nota = String(x.price_note || '').trim();
-        const precio = nota ? `<span class="mprice-v">${esc(nota)}</span>` : `<span class="mprice-v">${money.format(Number(x.price) || 0)}</span>`;
-        const dest = x.featured ? '<span class="fdest">⭐ Destacado</span>' : '';
-        return `<li class="mrow${x.available ? '' : ' sold'}${x.featured ? ' feat' : ''}">${em ? `<span class="memoji" aria-hidden="true">${esc(em)}</span>` : ''}<div class="mtxt"><b>${esc(x.name)}${dest}</b>${x.description ? `<div class="mute">${esc(x.description)}</div>` : ''}</div>${conPedidos && x.available ? `<button class="madd" data-add="${esc(x.name)}" aria-label="Agregar ${esc(x.name)} al pedido">+</button>` : ''}<div class="mprice">${precio}${x.available ? '' : '<span class="badge">Agotado</span>'}</div></li>`;
-      }).join('')}</ul>`;
+        const precio = nota ? esc(nota) : money.format(Number(x.price) || 0);
+        const desc = String(x.description || '').trim();
+        return `<button class="mcard${x.available ? '' : ' sold'}" data-it="${esc(x.name)}"><div class="mcard-imgwrap">${ph ? `<img class="mcard-img" src="${esc(ph)}" alt="" loading="lazy" onerror="this.style.display='none'">` : ''}<div class="mcard-ph">${ph ? '' : (em || '🍽️')}</div></div><div class="mcard-body"><div class="mcard-top"><div class="mcard-name">${esc(x.name)}</div>${x.featured ? '<span class="fdest">⭐</span>' : ''}</div>${desc ? `<div class="mcard-desc">${esc(desc)}</div>` : ''}<div class="mcard-foot"><div class="mcard-price">${precio}</div>${x.available ? '' : '<span class="mcard-badge">Agotado</span>'}</div></div></button>`;
+      }).join('')}</div>`;
     }).join('');
-    if (conPedidos) box.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
-      const it = (data.items || []).find(x => x.name === b.dataset.add);
-      if (!it) return;
-      const l = cart.find(x => x.n === it.name);
-      if (l) l.q++; else cart.push({ n: it.name, p: Number(it.price) || 0, e: String(it.emoji || '').trim(), q: 1 });
-      renderCart();
+    box.querySelectorAll('[data-it]').forEach(b => {
+      b.onclick = () => {
+        const it = (data.items || []).find(x => x.name === b.dataset.it);
+        if (!it) return;
+        if (!it.available) return;
+        openItem(it);
+      };
     });
   };
   const load = async () => {
@@ -1024,7 +1064,7 @@ async function menuTab() {
   /* Agrega un producto, lo resalta, hace scroll hasta él y lo deja listo para
      escribir el nombre. Así el negocio ve claramente qué acaba de agregar. */
   const agregarProducto = cat => {
-    const at = pushItem({ id: null, category: cat, name: '', description: '', price: 0, available: true, hidden: false, emoji: '', featured: false, price_note: '' });
+    const at = pushItem({ id: null, category: cat, name: '', description: '', price: 0, available: true, hidden: false, emoji: '', featured: false, price_note: '', photo: '' });
     marcarNuevo(at, cat);
     setDirty(true); render();
     const el = document.querySelector('.eprod[data-prod="' + at + '"]');
@@ -1049,7 +1089,7 @@ async function menuTab() {
     cats = ord.concat(cats.filter(c => !names.includes(c.name)));
     setDirty(true); render();
   };
-  const adopt = r => { updated = r.updated; cats = []; items = regroup((r.items || []).map(x => ({ id: x.id, category: normCat(x.category), name: x.name || '', description: x.description || '', price: Number(x.price) || 0, available: !!x.available, hidden: !!x.hidden, emoji: x.emoji || '', featured: !!x.featured, price_note: x.price_note || '' }))); items.forEach(x => catOf(x.category)); setDirty(false); updLine(); };
+  const adopt = r => { updated = r.updated; cats = []; items = regroup((r.items || []).map(x => ({ id: x.id, category: normCat(x.category), name: x.name || '', description: x.description || '', price: Number(x.price) || 0, available: !!x.available, hidden: !!x.hidden, emoji: x.emoji || '', featured: !!x.featured, price_note: x.price_note || '', photo: x.photo || '' }))); items.forEach(x => catOf(x.category)); setDirty(false); updLine(); };
   const loadCats = async () => { try { const r = await rpc('biz_cat_list', { p_slug: slug, p_pin: pin }); (r.categories || []).forEach(c => { const e = catOf(c.name); e.emoji = c.emoji || ''; e.photo = c.photo || ''; }); } catch {} };
   const reload = async () => { try { adopt(await rpc('biz_menu_list', { p_slug: slug, p_pin: pin })); await loadCats(); render(); } catch (e) { flash(mm, e.message, false); } };
   const render = () => {
@@ -1090,6 +1130,15 @@ async function menuTab() {
         </div>
         <div class="erow-d">
           <label class="consent" style="margin:0;flex:1;min-width:0"><span class="mute" style="flex:none">$ Precio:</span> <input data-price="${i}" type="number" inputmode="decimal" step="any" min="0" value="${esc(it.price)}" aria-label="Precio del producto ${i + 1}" ${it.price_note ? 'disabled' : ''} title="${it.price_note ? 'Reemplazado por: ' + esc(it.price_note) : 'Precio'}"></label>
+        </div>
+        <div class="eprod-foto">
+          <div class="eprod-prev">${it.photo ? `<img src="${esc(it.photo)}" alt="" onerror="this.parentNode.innerHTML='🖼️'">` : '🖼️'}</div>
+          <div class="eprod-foto-c">
+            <p class="mute">Foto del producto (cuadrado). Se ve en la tarjeta del menú.</p>
+            <input type="file" accept="image/*" data-pfile="${i}" aria-label="Foto del producto ${i + 1}">
+            <div class="upbar" data-pupbar="${i}"><i></i></div>
+            <button class="alt sm" data-pdel="${i}" ${it.photo ? '' : 'hidden'}>Quitar foto</button>
+          </div>
         </div>
         <div class="eopts">${catNames.length > 1 ? `<label class="consent"><span class="mute">Categoría:</span> <select data-mv="${i}" aria-label="Categoría del producto ${i + 1}">${catNames.map(c => `<option value="${esc(c)}"${c === it.category ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>` : ''}<label class="consent"><input type="checkbox" data-sld="${i}" ${it.available ? '' : 'checked'}> Agotado por ahora</label><label class="consent"><input type="checkbox" data-hid="${i}" ${it.hidden ? 'checked' : ''}> Ocultar (no se ve nunca)</label><label class="consent"><input type="checkbox" data-ft="${i}" ${it.featured ? 'checked' : ''}> ⭐ Destacado</label></div>
         <details><summary>Descripción y precio especial</summary><textarea data-dsc="${i}" maxlength="200" rows="2" aria-label="Descripción del producto ${i + 1}" placeholder="Ej: en taza grande, con leche cremosa">${esc(it.description)}</textarea><input data-pnote="${i}" maxlength="20" value="${esc(it.price_note || '')}" placeholder="En vez de precio, ej: Consultar" aria-label="Texto del precio del producto ${i + 1}"></details>
@@ -1137,6 +1186,27 @@ async function menuTab() {
       try { await rpc('biz_cat_save', { p_slug: slug, p_pin: pin, p_items: cats.map((c, k) => ({ name: c.name, emoji: c.emoji || '', photo: c.photo || '', position: k })) }); } catch {}
       render();
     });
+    box.querySelectorAll('[data-pfile]').forEach(el => el.onchange = async () => {
+      const file = el.files && el.files[0]; if (!file) return;
+      const i = +el.dataset.pfile, it = items[i];
+      if (!it) { el.value = ''; return; }
+      if (file.size > 5 * 1024 * 1024) { flash(mm, 'La foto es muy grande (máximo 5 MB).', false); el.value = ''; return; }
+      const bar = el.parentNode ? el.parentNode.querySelector('.upbar') : null, fill = bar && bar.firstElementChild;
+      if (bar) { bar.style.display = 'block'; if (fill) fill.style.width = '0%'; }
+      el.disabled = true;
+      try {
+        const url = await subirFoto(slug, pin, file, p => { if (fill) fill.style.width = p + '%'; });
+        it.photo = url; setDirty(true);
+        flash(mm, 'Foto del producto cargada. Tocá "Guardar cambios" para que se guarde.', true);
+        render();
+      } catch (e) { flash(mm, e.message || 'No se pudo subir la foto', false); el.value = ''; }
+      finally { el.disabled = false; if (bar) bar.style.display = 'none'; }
+    });
+    box.querySelectorAll('[data-pdel]').forEach(el => el.onclick = () => {
+      const i = +el.dataset.pdel, it = items[i]; if (!it) return;
+      if (!confirm('¿Quitar la foto de “' + (it.name || 'este producto') + '”?')) return;
+      it.photo = ''; setDirty(true); render();
+    });
     box.querySelectorAll('[data-ac]').forEach(el => el.onclick = () => agregarProducto(el.dataset.ac));
     box.querySelectorAll('[data-name]').forEach(el => el.oninput = () => { items[+el.dataset.name].name = el.value; setDirty(true); });
     box.querySelectorAll('[data-emo]').forEach(el => el.oninput = () => { items[+el.dataset.emo].emoji = el.value.slice(0, 8); setDirty(true); });
@@ -1183,7 +1253,7 @@ async function menuTab() {
     if (items.some(x => String(x.price_note || '').trim().length > 20)) return flash(mm, 'El texto del precio no puede superar los 20 caracteres', false);
     const b = document.getElementById('msv'); b.disabled = true;
     try {
-      await rpc('biz_menu_save', { p_slug: slug, p_pin: pin, p_items: items.map(x => ({ id: x.id || null, category: x.category, name: x.name.trim(), description: x.description.trim(), price: Number(x.price) || 0, available: !!x.available, hidden: !!x.hidden, emoji: String(x.emoji || '').trim().slice(0, 8), featured: !!x.featured, price_note: String(x.price_note || '').trim() })) });
+      await rpc('biz_menu_save', { p_slug: slug, p_pin: pin, p_items: items.map(x => ({ id: x.id || null, category: x.category, name: x.name.trim(), description: x.description.trim(), price: Number(x.price) || 0, available: !!x.available, hidden: !!x.hidden, emoji: String(x.emoji || '').trim().slice(0, 8), featured: !!x.featured, price_note: String(x.price_note || '').trim(), photo: String(x.photo || '').trim() })) });
       await rpc('biz_cat_save', { p_slug: slug, p_pin: pin, p_items: cats.map((c, k) => ({ name: c.name, emoji: c.emoji || '', photo: c.photo || '', position: k })) });
       setDirty(false); flash(mm, 'Menú guardado', true); await reload();
     } catch (e) { flash(mm, e.message, false); }
@@ -1217,7 +1287,7 @@ async function menuTab() {
       if (raw.indexOf(',') >= 0) raw = raw.replace(/\./g, '').replace(',', '.');
       const price = Number(raw);
       if (!cat || !nom || !isFinite(price) || price < 0) { mal++; return; }
-      pushItem({ id: null, category: cat, name: nom, description: '', price: Math.round(price * 100) / 100, available: true, hidden: false, emoji: '', featured: false, price_note: '' });
+      pushItem({ id: null, category: cat, name: nom, description: '', price: Math.round(price * 100) / 100, available: true, hidden: false, emoji: '', featured: false, price_note: '', photo: '' });
       ok++;
     });
     if (!ok) return flash(mpmsg, 'No pude leer ninguna línea. Usá el formato: Categoría; Nombre; Precio', false);
