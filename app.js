@@ -9,22 +9,74 @@ const SUPABASE_KEY = "sb_publishable_tSt87CXb32Up5zSTfgTfZg_uVVMXuuS";
 const $app = document.getElementById('app');
 const qs = new URLSearchParams(location.search);
 const isPanel = qs.has('panel');
+/* El almacenamiento del navegador puede estar bloqueado (modo privado, iframes,
+   políticas de la empresa o cuota llena). Leemos y escribimos SIEMPRE con
+   try/catch: si una sola lectura tirara, la app quedaría en blanco. */
+const store = {
+  get: (k, sesion) => { try { return (sesion ? sessionStorage : localStorage).getItem(k) || ''; } catch { return ''; } },
+  set: (k, v, sesion) => { try { (sesion ? sessionStorage : localStorage).setItem(k, v); return true; } catch { return false; } },
+  del: (k, sesion) => { try { (sesion ? sessionStorage : localStorage).removeItem(k); } catch {} },
+  keys: () => { try { return Object.keys(localStorage); } catch { return []; } }
+};
+/* El código del negocio solo admite letras, números y guiones: es lo único que
+   aceptamos para armar URLs y para consultar al servidor. */
+const slugOk = s => /^[a-z0-9-]{2,40}$/.test(String(s || '').toLowerCase());
 let _s = ''; try { _s = localStorage.getItem('panel_slug') || ''; } catch {}
-const slug = (qs.get('b') || (isPanel ? _s : '')).toLowerCase();
-let biz = null, pin = sessionStorage.getItem('pin_' + slug) || '', stream = null, poll = null;
+const _slugRaw = String(qs.get('b') || (isPanel ? _s : '')).toLowerCase();
+const slug = slugOk(_slugRaw) ? _slugRaw : '';
+let biz = null, pin = store.get('pin_' + slug, true), stream = null, poll = null;
+/* El PIN del negocio se valida en el servidor. Guardamos el dato del negocio ya
+  logueado para no volver a validarlo (y no gastar intentos del limitador) en
+   cada recarga de la página. */
+const pinOkKey = 'pinok_' + slug, bizOkKey = 'bizok_' + slug;
+const pinSessOk = () => { const t = +store.get(pinOkKey, true); return !!t && (Date.now() - t) < 30 * 60 * 1000; };
+const pinSessSet = () => store.set(pinOkKey, String(Date.now()), true);
+const pinSessClear = () => { store.del(pinOkKey, true); store.del(bizOkKey, true); };
+/* v = la pestaña visible del panel. Antes era una "variable global" que el
+   navegador crea sola por el id="v": eso se puede pisar y romper el panel. */
+let v = null, pedTabOn = false, stampTabOn = false;
 
 async function rpc(fn, args) {
-  const r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, {
-    method: 'POST',
-    headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify(args)
-  });
-  const d = await r.json().catch(() => null);
-  if (!r.ok) throw new Error((d && d.message) || 'Error de conexión');
-  if (d && d.error) throw new Error(d.error);
-  return d;
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 25000);
+  try {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(args || {}),
+      signal: ctl.signal
+    });
+    const d = await r.json().catch(() => null);
+    if (!r.ok) throw new Error((d && d.message) || 'Error de conexión');
+    if (d && d.error) throw new Error(d.error);
+    return d;
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error('La conexión se tardó demasiado. Revisá tu internet.');
+    throw e;
+  } finally { clearTimeout(t); }
 }
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* Llama a la función nueva (más completa) y, si todavía no está en el servidor,
+   cae en la vieja. Así la app funciona igual antes y después de aplicar el SQL. */
+async function rpcNuevo(fnNuevo, fnViejo, args) {
+  let err = null;
+  try { const r = await rpc(fnNuevo, args); if (r && !r.error) return r; } catch (e) { err = e; }
+  try { return await rpc(fnViejo, args); } catch (e2) { throw err || e2; }
+}
+const esc = s => String(s ?? '').replace(/[&<>"'`]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;'}[c]));
+/* Un cumpleaños puede venir guardado como "AAAA-MM-DD" o como "MM-DD". Comparamos
+   solo mes y día, así el año no rompe la comparación. */
+function cumplePartes(fecha) {
+  const p = String(fecha || '').trim().split('-').map(x => x.trim());
+  if (p.length < 2) return null;
+  const mes = p.length >= 3 ? p[1] : p[0], dia = p.length >= 3 ? p[2] : p[1];
+  if (!/^\d{1,2}$/.test(mes) || !/^\d{1,2}$/.test(dia)) return null;
+  return { m: +mes, d: +dia };
+}
+const esHoyCumple = fecha => { const p = cumplePartes(fecha); if (!p) return false; const h = new Date(); return p.m === h.getMonth() + 1 && p.d === h.getDate(); };
+/* Días desde la última visita. Si nunca vino, no hay fecha: devuelve null. */
+const diasSinVenir = c => { const t = c && c.last_seen ? new Date(c.last_seen).getTime() : NaN; return isFinite(t) ? Math.floor((Date.now() - t) / 864e5) : null; };
+/* Primer nombre del cliente (para saludarlo). Nunca rompe si el nombre es vacío. */
+const primerNombre = c => String(c && c.name || '').trim().split(' ')[0];
 /* Normaliza un teléfono argentino a 10 dígitos (área + número), igual que la
    base de datos. Acepta cómo lo escribe la gente: con 0, con 15, con +54, etc. */
 function normPhone(v) {
@@ -41,17 +93,34 @@ function normPhone(v) {
   if (d.length > 10) d = d.slice(-10);
   return d;
 }
-/* Convierte un teléfono guardado en un número listo para el link de WhatsApp */
+/* Convierte un teléfono guardado en un número listo para el link de WhatsApp.
+   Los celulares argentinos necesitan el 9 adelante (549 + 10 dígitos). */
 function waNum(phone) {
   const d = normPhone(phone);
   if (!d) return '';
   if (d.length === 10) return '549' + d;   /* celular argentino */
-  return '54' + d;                          /* fijo u otro */
+  if (d.length === 11) return '54' + d;    /* sin el 9 adelante */
+  if (d.length === 8) return '54' + d;     /* línea corta, sin característica */
+  return '';
+}
+/* Número listo para llamar (tel:). Acá NO va el 9: +54 11 2345-6789 sirve igual
+   para un celular y para un fijo. */
+function telNum(phone) {
+  const d = normPhone(phone);
+  if (!d) return '';
+  if (d.length === 10 || d.length === 11 || d.length === 8) return '+54' + d;
+  return '';
 }
 /* Sube una foto del menú a Supabase Storage usando un "pase" que entrega
    biz_photo_sign (valida el PIN). Devuelve la URL pública. */
+const FOTO_TIPOS = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
 async function subirFoto(slug, pin, file, onProgress) {
-  const ext = ((file.name || '').split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  /* Solo imágenes, y la extensión la ponemos nosotros: nunca la del archivo
+     que eligió el usuario (si no, alguien podría subir un .html). */
+  const tipo = String(file && file.type || '').toLowerCase();
+  const ext = FOTO_TIPOS[tipo];
+  if (!ext) throw new Error('La foto tiene que ser una imagen (JPG, PNG, WEBP o GIF)');
+  if (file.size > 5 * 1024 * 1024) throw new Error('La foto es muy grande (máximo 5 MB). Probá con una más liviana.');
   const s = await rpc('biz_photo_sign', { p_slug: slug, p_pin: pin, p_ext: ext });
   if (!s || !s.token || !s.path) throw new Error('No se pudo preparar la subida');
   await new Promise((res, rej) => {
@@ -73,7 +142,18 @@ const lumOf = c => { if (!hexOk(c)) return 0; const v = [1, 3, 5].map(i => parse
 const textOn = c => lumOf(c) > .179 ? '#1a1a1a' : '#fff';
 const mixHex = (a, b) => '#' + [1, 3, 5].map(i => Math.round((parseInt(a.slice(i, i + 2), 16) + parseInt(b.slice(i, i + 2), 16)) / 2).toString(16).padStart(2, '0')).join('');
 const setColor = (c, c2) => { const a = hexOk(c) ? c : '#c2410c', b = hexOk(c2) ? c2 : a; document.documentElement.style.setProperty('--ac', a); document.documentElement.style.setProperty('--ac2', b); document.documentElement.style.setProperty('--ac-ink', textOn(mixHex(a, b))); document.documentElement.style.setProperty('--btn-ink', textOn(a)); };
-const flash = (el, t, ok) => { el.innerHTML = `<div class="msg ${ok ? 'ok' : 'err'}" role="${ok ? 'status' : 'alert'}">${esc(t)}</div>`; };
+const flash = (el, t, ok) => {
+  if (!el) return;
+  const html = `<div class="msg ${ok ? 'ok' : 'err'}" role="${ok ? 'status' : 'alert'}">${esc(t)}</div>`;
+  /* Si el destino tiene un formulario adentro, no lo borramos: agregamos el aviso. */
+  if (el.querySelector && el.querySelector('form')) {
+    const d = document.createElement('div'); d.innerHTML = html;
+    const prev = el.querySelector('.msg'); if (prev) prev.remove();
+    el.appendChild(d.firstElementChild);
+    return;
+  }
+  el.innerHTML = html;
+};
 /* Cabecera con el color del negocio (mismo lenguaje visual que el menú) */
 function bhero(kicker, title, sub, ico, small) {
   return `<header class="bhero${small ? ' hero-sm' : ''}" role="img" aria-label="${esc(title)}">${ico ? `<div class="bhero-ico" aria-hidden="true">${esc(ico)}</div>` : ''}<p class="bhero-k">${esc(kicker)}</p><h1>${esc(title)}</h1>${sub ? `<p class="bhero-u">${sub}</p>` : ''}</header>`;
@@ -127,7 +207,7 @@ function visitaHtml(c) {
 }
 async function customerView() {
   legalFooter();
-  const saved = localStorage.getItem('code_' + slug);
+  const saved = store.get('code_' + slug);
   if (!saved) {
     $app.innerHTML = `${bhero('Tarjeta de sellos', biz.name, 'Juntá ' + biz.stamps_needed + ' sellos y ganá: ' + esc(biz.reward_emoji || '🎁') + ' ' + esc(biz.reward), biz.reward_emoji || '🎁')}
     <div class="card"><h2>Creá tu tarjeta</h2>${biz.welcome_stamps > 0 ? '<p class="mute">Te regalamos ' + biz.welcome_stamps + ' sello' + (biz.welcome_stamps > 1 ? 's' : '') + ' de bienvenida.</p>' : ''}<p class="mute">Solo pedimos tu nombre y tu teléfono: son los datos necesarios para tener tu tarjeta. No pedimos dirección, email ni datos de pago.</p>
@@ -139,24 +219,27 @@ async function customerView() {
     ${biz.ask_promo ? '<label class="consent"><input type="checkbox" id="pm"> Quiero recibir ofertas y novedades por WhatsApp (opcional)</label>' : ''}
     <label class="consent"><input type="checkbox" id="ac" required aria-required="true"> Acepto la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a> y el uso de mis datos solo para esta tarjeta de sellos.</label>
     <button type="submit" id="go">Crear mi tarjeta</button><div id="m" aria-live="polite"></div></form></div>`;
+    /* Buscamos los campos por id (y no por "variables globales" que crea el
+       navegador con los id: eso se puede pisar y romper la pantalla). */
+    const elN = document.getElementById('n'), elP = document.getElementById('p'), elGo = document.getElementById('go'), elM = document.getElementById('m');
     const phEl = document.getElementById('ph');
-    p.oninput = () => {
-      const v = normPhone(p.value);
-      if (!p.value.trim()) { phEl.textContent = 'Escribilo como quieras: lo acomodamos solos.'; phEl.style.color = ''; return; }
+    elP.oninput = () => {
+      const v = normPhone(elP.value);
+      if (!elP.value.trim()) { phEl.textContent = 'Escribilo como quieras: lo acomodamos solos.'; phEl.style.color = ''; return; }
       if (v.length >= 6) { phEl.textContent = '✓ Queda guardado como: ' + v.replace(/^(\d{2,4})(\d+)$/, '$1 $2'); phEl.style.color = ''; }
       else { phEl.textContent = 'Escribilo como quieras: lo acomodamos solos.'; phEl.style.color = ''; }
     };
     document.getElementById('frm').onsubmit = async ev => {
       ev.preventDefault();
-      const go = document.getElementById('go');
-      const name = n.value.trim(), phone = normPhone(p.value);
-      if (name.length < 2) return flash(m, 'Escribí tu nombre', false);
-      if (phone.length < 6) return flash(m, 'Escribí un teléfono válido (con característica). Ej: 11 2345 6789', false);
-      if (!document.getElementById('ac').checked) return flash(m, 'Tenés que aceptar la política de privacidad para crear tu tarjeta', false);
+      const go = elGo;
+      const name = elN.value.trim(), phone = normPhone(elP.value);
+      if (name.length < 2) return flash(elM, 'Escribí tu nombre', false);
+      if (phone.length < 6) return flash(elM, 'Escribí un teléfono válido (con característica). Ej: 11 2345 6789', false);
+      if (!document.getElementById('ac').checked) return flash(elM, 'Tenés que aceptar la política de privacidad para crear tu tarjeta', false);
       go.disabled = true;
       try { const code = await rpc('register_customer', { p_slug: slug, p_name: name, p_phone: phone, p_birthday: document.getElementById('bd')?.value || null, p_promo: !!document.getElementById('pm')?.checked });
-        localStorage.setItem('code_' + slug, code); customerView(); }
-      catch (e) { go.disabled = false; flash(m, e.message, false); }
+        store.set('code_' + slug, code); customerView(); }
+      catch (e) { go.disabled = false; flash(elM, e.message, false); }
     };
     return;
   }
@@ -166,11 +249,11 @@ async function customerView() {
   const startPoll = () => { stopPoll(); poll = setInterval(() => { if (!document.hidden && !document.querySelector('.msg.err')) draw(); }, 10000); };
   async function draw() {
     try {
-      const c = await rpc('get_card', { p_slug: slug, p_code: saved });
-      if (!c) { clearInterval(poll); localStorage.removeItem('code_' + slug); return customerView(); }
-      const done = c.stamps >= biz.stamps_needed, left = biz.stamps_needed - c.stamps, bdToday = c.birthday_today || (c.birthday && c.birthday === new Date().toLocaleDateString('en-CA').slice(5));
+      const c = await rpcNuevo('get_card_full', 'get_card', { p_slug: slug, p_code: saved });
+      if (!c) { clearInterval(poll); store.del('code_' + slug); return customerView(); }
+      const done = c.stamps >= biz.stamps_needed, left = biz.stamps_needed - c.stamps, bdToday = !!(c.birthday_today || esHoyCumple(c.birthday));
       const pct = Math.max(0, Math.min(100, Math.round((c.stamps / biz.stamps_needed) * 100)));
-      $app.innerHTML = `${bhero(done ? '¡Tarjeta completa!' : 'Tu tarjeta', biz.name, 'Hola, ' + esc(c.name), biz.stamp_emoji || biz.reward_emoji || '⭐', true)}${biz.notice ? '<div class="card notice">' + esc(biz.notice) + '</div>' : ''}${bdToday ? '<div class="card notice cumple">🎂 ¡Feliz cumpleaños, ' + esc(c.name.split(' ')[0]) + '!' + (c.bday_gift ? ' <b>Te regalamos 1 sello</b> 🎉' : (biz.birthday_stamp ? ' Pasá hoy por el local y te regalamos 1 sello extra.' : '')) + '</div>' : ''}
+      $app.innerHTML = `${bhero(done ? '¡Tarjeta completa!' : 'Tu tarjeta', biz.name, 'Hola, ' + esc(c.name), biz.stamp_emoji || biz.reward_emoji || '⭐', true)}${biz.notice ? '<div class="card notice">' + esc(biz.notice) + '</div>' : ''}${bdToday ? '<div class="card notice cumple">🎂 ¡Feliz cumpleaños, ' + esc(primerNombre(c)) + '!' + (c.bday_gift ? ' <b>Te regalamos 1 sello</b> 🎉' : (biz.birthday_stamp ? ' Pasá hoy por el local y te regalamos 1 sello extra.' : '')) + '</div>' : ''}
       <div class="card">${stampsGrid(biz.stamps_needed, c.stamps, biz.stamp_emoji, biz.tiers, biz.reward_emoji)}
       <div class="prog" role="progressbar" aria-valuenow="${c.stamps}" aria-valuemin="0" aria-valuemax="${biz.stamps_needed}" aria-label="${c.stamps} de ${biz.stamps_needed} sellos"><i style="width:${pct}%"></i></div>
       <p class="prog-t"><span>${c.stamps} de ${biz.stamps_needed} sellos</span><span class="mute">${done ? '¡Listo!' : 'Faltan ' + left}</span></p>
@@ -185,7 +268,7 @@ async function customerView() {
         e.preventDefault();
         if (!confirm('¿Borrar tu tarjeta de ' + biz.name + '? Se eliminan tu nombre, teléfono y todos tus sellos. No se puede deshacer.')) return;
         stopPoll();
-        try { await rpc('delete_my_card', { p_slug: slug, p_code: saved }); localStorage.removeItem('code_' + slug); customerView(); }
+        try { await rpc('delete_my_card', { p_slug: slug, p_code: saved }); store.del('code_' + slug); customerView(); }
         catch (err) { flash(document.getElementById('dm'), err.message, false); startPoll(); }
       };
     } catch (e) {
@@ -202,16 +285,38 @@ async function customerView() {
 }
 
 /* ---------------- NEGOCIO ---------------- */
+/* Error de PostgREST cuando la función todavía no existe en el servidor. */
+const noExiste = e => /PGRST202|Could not find the function|no se encontr[oó] la funci[oó]n/i.test(e && e.message || '');
+/* Usa la función nueva si existe; si todavía no está en el servidor, la vieja. */
+async function rpcOpcional(fnNuevo, fnViejo, args) {
+  try { return await rpc(fnNuevo, args); }
+  catch (e) { if (!noExiste(e)) throw e; return rpc(fnViejo, args); }
+}
 function loginView(err) {
   $app.innerHTML = `${bhero('Panel del negocio', biz.name, 'Ingresá con el PIN para administrar tu tarjeta de sellos', '🔒', true)}<div class="card"><form id="frm"><label for="pn">PIN del negocio</label>
   <input id="pn" type="password" inputmode="numeric" autocomplete="current-password" maxlength="12" required aria-required="true"><p class="mute" style="margin:8px 0 0">El PIN es personal y secreto. No lo compartas con nadie.</p>
   <button type="submit" id="go">Entrar</button><div id="m" aria-live="polite">${err ? `<div class="msg err" role="alert">${esc(err)}</div>` : ''}</div></form></div>`;
+  const elPin = document.getElementById('pn'), elGo = document.getElementById('go'), elM = document.getElementById('m');
   document.getElementById('frm').onsubmit = async ev => {
     ev.preventDefault();
-    const go = document.getElementById('go');
+    const go = elGo;
     go.disabled = true;
-    try { const b = await rpc('biz_login', { p_slug: slug, p_pin: pn.value }); pin = pn.value; sessionStorage.setItem('pin_' + slug, pin); biz = { ...biz, ...b }; setColor(b.color, b.color2); panel(qs.get('tab') || 'stamp'); }
-    catch (e) { go.disabled = false; flash(m, e.message, false); }
+    try {
+      /* biz_login_lim suma un límite de intentos por IP (el del servidor es por
+         negocio: un atacante podía dejar al comercio sin poder entrar). */
+      const b = await rpcOpcional('biz_login_lim', 'biz_login', { p_slug: slug, p_pin: elPin.value });
+      pin = elPin.value;
+      store.set('pin_' + slug, pin);
+      pinSessSet();
+      store.set(bizOkKey, JSON.stringify(b || {}), true);
+      biz = { ...biz, ...b };
+      setColor(b.color, b.color2);
+      panel(qs.get('tab') || 'stamp');
+    } catch (e) {
+      go.disabled = false;
+      elPin.value = ''; elPin.focus();
+      flash(elM, e.message || 'No se pudo entrar', false);
+    }
   };
 }
 function posterView() {
@@ -228,17 +333,16 @@ async function cargarAvisos() {
   const box = document.getElementById('avisos');
   if (!box) return;
   try {
-    const L = await rpc('biz_customers', { p_slug: slug, p_pin: pin });
+    const L = await rpcNuevo('biz_customers_full', 'biz_customers', { p_slug: slug, p_pin: pin });
     if (!document.getElementById('avisos')) return;
     const listos = L.filter(c => c.stamps >= biz.stamps_needed).length;
     const day0 = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
-    const hoy = L.filter(c => new Date(c.last_seen) >= day0).length;
-    const frios = L.filter(c => Date.now() - new Date(c.last_seen) > 30 * 864e5).length;
+    const hoy = L.filter(c => c.last_seen && new Date(c.last_seen) >= day0).length;
+    const frios = L.filter(c => { const d = diasSinVenir(c); return d !== null && d > 30; }).length;
     /* ¿Alguien cumple años HOY? Se avisa siempre arriba, es lo más urgente. */
-    const mmdd = new Date().toLocaleDateString('en-CA').slice(5);
-    const cumpleHoy = biz.ask_birthday ? L.filter(c => c.birthday && c.birthday === mmdd) : [];
+    const cumpleHoy = biz.ask_birthday ? L.filter(c => esHoyCumple(c.birthday)) : [];
     const it = [];
-    if (cumpleHoy.length) it.push({ k: 'cumple', ico: '🎂', t: cumpleHoy.length === 1 ? '¡Hoy cumple años ' + cumpleHoy[0].name.split(' ')[0] + '! Salúdalo por WhatsApp' : '¡Hoy cumplen años ' + cumpleHoy.length + ' clientes! Saludalos por WhatsApp', go: 'stats' });
+    if (cumpleHoy.length) it.push({ k: 'cumple', ico: '🎂', t: cumpleHoy.length === 1 ? '¡Hoy cumple años ' + String(cumpleHoy[0].name || '').split(' ')[0] + '! Salúdalo por WhatsApp' : '¡Hoy cumplen años ' + cumpleHoy.length + ' clientes! Saludalos por WhatsApp', go: 'stats' });
     if (listos) it.push({ k: 'premio', ico: '🎁', t: listos + ' cliente' + (listos === 1 ? '' : 's') + ' con premio para canjear', go: 'list' });
     if (frios) it.push({ k: 'frio', ico: '😴', t: frios + ' cliente' + (frios === 1 ? '' : 's') + ' hace más de 30 días que no vienen', go: 'stats' });
     if (hoy && !listos) it.push({ k: 'hoy', ico: '✅', t: hoy + ' vinieron hoy', go: null });
@@ -256,12 +360,14 @@ function panel(tab) {
   stopCam(); stopMenuWarn();
   if (stampIv) { clearInterval(stampIv); stampIv = null; }
   if (pedIv) { clearInterval(pedIv); pedIv = null; }
+  pedTabOn = false; stampTabOn = false;
   legalFooter();
   const T = [['stamp', 'Mostrador']];
   if (biz.modulos?.pedidos) T.push(['ped', 'Pedidos']);
   T.push(['list', 'Clientes'], ['stats', 'Resumen'], ['cfg', 'Ajustes']);
   T.push(['menu', biz.menu_enabled ? 'Menú' : 'Menú ⚠']);
   $app.innerHTML = `${bhero('Panel del negocio', biz.name, '', biz.stamp_emoji || biz.reward_emoji || '⚙️', true)}${installHtml('panel')}<div id="avisos"></div><div class="tabs${T.length > 4 ? ' t5' : ''}" role="tablist" aria-label="Secciones del panel">${T.map(t => `<button role="tab" aria-selected="${t[0] === tab}" aria-controls="v" class="${t[0] === tab ? 'on' : ''}" data-t="${t[0]}">${t[1]}</button>`).join('')}</div><div id="v" role="tabpanel" tabindex="0"></div>`;
+  v = document.getElementById('v');
   document.querySelectorAll('[data-t]').forEach(b => b.onclick = () => panel(b.dataset.t));
   cargarAvisos();
   ({ stamp: stampTab, list: listTab, stats: statsTab, cfg: cfgTab, menu: menuTab, ped: pedidosTab })[tab]();
@@ -301,7 +407,7 @@ async function stampTab() {
     }
     res.querySelectorAll('.mtile').forEach(b => b.onclick = () => tocar(b.dataset.c));
   };
-  const load = async () => { try { L = await rpc('biz_customers', { p_slug: slug, p_pin: pin }); render(); } catch (e) { bnr.innerHTML = `<div class="msg err" role="alert">${esc(e.message)}</div>`; } };
+  const load = async () => { try { L = await rpcNuevo('biz_customers_full', 'biz_customers', { p_slug: slug, p_pin: pin }); render(); } catch (e) { bnr.innerHTML = `<div class="msg err" role="alert">${esc(e.message)}</div>`; } };
   const banner = (txt, code, tier, completo) => {
     bnr.innerHTML = `<div class="mbanner"><span>${esc(txt)}</span>${completo ? '<button class="undo" id="rdm">🎁 Canjear premio</button>' : ''}${tier ? `<button class="undo" id="clm">Canjear ${esc(tier.reward)}</button>` : ''}${code ? '<button class="undo" id="und">Deshacer</button>' : ''}</div>`;
     const u = document.getElementById('und');
@@ -339,7 +445,10 @@ async function stampTab() {
   q.oninput = render;
   load();
   if (stampIv) clearInterval(stampIv);
-  stampIv = setInterval(() => { if (!document.hidden && !busy) load(); }, 20000);
+  stampTabOn = true;
+  /* El interval solo corre si la pestaña "Mostrador" sigue abierta: si el
+     negocio cambia de pestaña, el interval viejo sigue preguntando solo. */
+  stampIv = setInterval(() => { if (!document.hidden && !busy && stampTabOn) load(); }, 20000);
   const scan = document.getElementById('scan');
   scan.onclick = async () => {
     const ov = document.createElement('div');
@@ -383,9 +492,16 @@ async function pedidosTab() {
       ultimo = P.length;
       if (!P.length) { plist.innerHTML = '<div class="card"><p class="mute" style="margin:0">No hay pedidos esperando. Cuando un cliente pida desde el menú, aparece acá y el sello se suma al entregarlo.</p></div>'; return; }
       plist.innerHTML = P.map(o => {
-        const its = (o.items || []).map(i => `<li class="olit"><span class="oq">${i.q || 1}×</span> ${esc(i.n)}${i.e ? ' ' + esc(i.e) : ''} <span class="mute">${money.format(Number(i.p) || 0)}</span></li>`).join('');
-        const orig = o.origen || 'llevar';
-        const tag = orig === 'mesa' && o.mesa ? `🍽️ Mesa ${esc(o.mesa)}` : '🥡 Para llevar';
+        /* La cantidad la manda el cliente: la acotamos y la imprimimos como
+           número, así un valor raro no puede romper el HTML del panel. */
+        const its = (o.items || []).map(i => {
+          const q = Math.max(1, Math.min(99, Math.round(Number(i && i.q) || 1)));
+          return `<li class="olit"><span class="oq">${q}×</span> ${esc(i && i.n)}${i && i.e ? ' ' + esc(i.e) : ''} <span class="mute">${money.format(Number(i && i.p) || 0)}</span></li>`;
+        }).join('');
+        const orig = String(o.origen || '').toLowerCase();
+        const tag = orig === 'mesa'
+          ? (o.mesa ? `🍽️ Mesa ${esc(o.mesa)}` : '🍽️ En mesa (sin número)')
+          : (orig === 'retirar' ? '🏠 Retirar en el local' : '🥡 Para llevar');
         return `<div class="ocard"><div class="ohead"><b>${esc(o.cliente)}</b><span class="mute">${tag} · ${hace(o.creado)}</span></div><ul class="olits">${its}</ul>${o.nota ? `<p class="onota">💬 ${esc(o.nota)}</p>` : ''}<div class="ototal">Total ${money.format(Number(o.total) || 0)} <span class="mute" style="font-weight:400">· lo cargó el cliente</span></div><div class="erow"><button class="sm" data-e="${o.id}">Entregar + 1 sello</button><button class="alt sm" data-c="${o.id}">Cancelar pedido</button></div></div>`;
       }).join('');
       plist.querySelectorAll('[data-e]').forEach(b => b.onclick = async () => {
@@ -405,9 +521,12 @@ async function pedidosTab() {
       });
     } catch (e) { plist.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
   };
+  if (pedIv) { clearInterval(pedIv); pedIv = null; }
+  pedTabOn = true;
+  /* El interval se instala ANTES de la primera carga y se apaga solo si la
+     pestaña "Pedidos" sigue abierta (si no, seguía preguntando solo). */
+  pedIv = setInterval(() => { if (!document.hidden && pedTabOn) load(); }, 8000);
   await load();
-  if (pedIv) clearInterval(pedIv);
-  pedIv = setInterval(() => { if (!document.hidden) load(); }, 8000);
 }
 
 let inst = null;
@@ -466,8 +585,8 @@ function bizData() {
 async function statsTab() {
   v.innerHTML = '<p class="mute">Cargando…</p>';
   try {
-    const [S, L, R] = await Promise.all([rpc('biz_stats', { p_slug: slug, p_pin: pin }), rpc('biz_customers', { p_slug: slug, p_pin: pin }), rpc('biz_report', { p_slug: slug, p_pin: pin })]);
-    const old = L.filter(c => Date.now() - new Date(c.last_seen) > 30 * 864e5).sort((a, b) => new Date(a.last_seen) - new Date(b.last_seen));
+    const [S, L, R] = await Promise.all([rpc('biz_stats', { p_slug: slug, p_pin: pin }), rpcNuevo('biz_customers_full', 'biz_customers', { p_slug: slug, p_pin: pin }), rpc('biz_report', { p_slug: slug, p_pin: pin })]);
+    const old = L.filter(c => { const d = diasSinVenir(c); return d !== null && d > 30; }).sort((a, b) => new Date(a.last_seen || 0) - new Date(b.last_seen || 0));
     const DN = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'], byDay = {};
     R.days.forEach(x => byDay[x.d] = x.n);
     const ds = [...Array(30)].map((_, i) => new Date(Date.now() - (29 - i) * 864e5).toLocaleDateString('en-CA'));
@@ -481,11 +600,11 @@ async function statsTab() {
       <p class="mute" style="margin:6px 0 0">${Math.max(...hrV) ? 'Horario más fuerte: <b>de ' + peak(hrV) + ' a ' + (peak(hrV) + 1) + ' h</b>' : ''}</p></div>`;
     const top = [...L].filter(c => c.visits > 0).sort((a, b) => b.visits - a.visits).slice(0, 5);
     const day0 = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
-    const bds = L.filter(c => c.birthday).map(c => { const [m, d] = c.birthday.split('-').map(Number); let t = new Date(day0.getFullYear(), m - 1, d); if (t < day0) t = new Date(day0.getFullYear() + 1, m - 1, d); return { c, days: Math.round((t - day0) / 864e5) }; }).filter(x => x.days <= 7).sort((a, b) => a.days - b.days);
+    const bds = L.filter(c => c.birthday).map(c => { const p = cumplePartes(c.birthday); if (!p) return null; const m = p.m, d = p.d; let t = new Date(day0.getFullYear(), m - 1, d); if (t < day0) t = new Date(day0.getFullYear() + 1, m - 1, d); return { c, days: Math.round((t - day0) / 864e5) }; }).filter(Boolean).filter(x => x.days <= 7).sort((a, b) => a.days - b.days);
     const waLink = (phone, t) => 'https://wa.me/' + waNum(phone) + '?text=' + encodeURIComponent(t);
     const wa = c => {
       const left = biz.stamps_needed - c.stamps;
-      const t = `Hola ${c.name.split(' ')[0]}, te esperamos en ${biz.name}! ` + (c.stamps > 0 && left > 0 ? `Te faltan ${left} sellos para tu premio: ${biz.reward}.` : 'Tu tarjeta de sellos te está esperando.');
+      const t = `Hola ${primerNombre(c)}, te esperamos en ${biz.name}! ` + (c.stamps > 0 && left > 0 ? `Te faltan ${left} sellos para tu premio: ${biz.reward}.` : 'Tu tarjeta de sellos te está esperando.');
       return 'https://wa.me/' + waNum(c.phone) + '?text=' + encodeURIComponent(t);
     };
     v.innerHTML = `<div class="card"><div class="stats">
@@ -496,8 +615,8 @@ async function statsTab() {
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="alt sm" id="rsc">Copiar resumen</button><a class="btn sm" id="rsv" target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a></div>
       <pre id="rst" class="rstxt"></pre><div id="rsm" aria-live="polite"></div></div>
     ${chartHtml}    <div class="card"><h2>Mejores clientes</h2>${top.length ? top.map(c => `<div class="row"><b>${esc(c.name)}</b><span>${c.visits} visitas</span></div>`).join('') : '<p class="mute">Todavía no hay datos.</p>'}</div>
-    ${!biz.ask_birthday ? '' : `<div class="card"><h2>Cumplen esta semana</h2>${bds.length ? bds.map(x => `<div class="row"><div><b>${esc(x.c.name)}</b><div class="mute">${x.days === 0 ? 'Hoy' : 'En ' + x.days + ' día' + (x.days > 1 ? 's' : '')}</div></div>${(x.c.promo_ok || !biz.ask_promo) ? '<a class="btn sm" target="_blank" rel="noopener noreferrer" href="' + waLink(x.c.phone, (biz.birthday_msg || '¡Feliz cumpleaños, {nombre}! 🎂 Te saludamos de {negocio}. Te esperamos para festejar.').replace(/\{nombre\}/g, x.c.name.split(' ')[0]).replace(/\{negocio\}/g, biz.name)) + '">Saludar por WhatsApp</a>' : (biz.ask_promo ? '<span class="mute">No aceptó mensajes</span>' : '')}</div>`).join('') : '<p class="mute">Nadie por ahora.</p>'}</div>`}
-    <div class="card"><h2>Hace más de 30 días que no vienen</h2><p class="mute" style="margin:0 0 8px">Escribiles un mensaje para que vuelvan.</p>${old.length ? old.map(c => { const dd = Math.floor((Date.now() - new Date(c.last_seen)) / 864e5); return `<div class="row"><div><b>${esc(c.name)}</b><div class="mute">${c.stamps}/${biz.stamps_needed} sellos · hace ${dd} días</div></div>${(c.promo_ok || !biz.ask_promo) ? '<a class="btn sm" target="_blank" rel="noopener noreferrer" href="' + wa(c) + '">Escribir por WhatsApp</a>' : (biz.ask_promo ? '<span class="mute">No aceptó ofertas</span>' : '')}</div>`; }).join('') : '<p class="mute">Nadie por ahora. Buena señal.</p>'}</div>`;
+    ${!biz.ask_birthday ? '' : `<div class="card"><h2>Cumplen esta semana</h2>${bds.length ? bds.map(x => `<div class="row"><div><b>${esc(x.c.name)}</b><div class="mute">${x.days === 0 ? 'Hoy' : 'En ' + x.days + ' día' + (x.days > 1 ? 's' : '')}</div></div>${(x.c.promo_ok || !biz.ask_promo) ? '<a class="btn sm" target="_blank" rel="noopener noreferrer" href="' + waLink(x.c.phone, (biz.birthday_msg || '¡Feliz cumpleaños, {nombre}! 🎂 Te saludamos de {negocio}. Te esperamos para festejar.').replace(/\{nombre\}/g, primerNombre(x.c)).replace(/\{negocio\}/g, biz.name)) + '">Saludar por WhatsApp</a>' : (biz.ask_promo ? '<span class="mute">No aceptó mensajes</span>' : '')}</div>`).join('') : '<p class="mute">Nadie por ahora.</p>'}</div>`}
+    <div class="card"><h2>Hace más de 30 días que no vienen</h2><p class="mute" style="margin:0 0 8px">Escribiles un mensaje para que vuelvan.</p>${old.length ? old.map(c => { const dd = diasSinVenir(c) || 0; return `<div class="row"><div><b>${esc(c.name)}</b><div class="mute">${c.stamps}/${biz.stamps_needed} sellos · hace ${dd} días</div></div>${(c.promo_ok || !biz.ask_promo) ? '<a class="btn sm" target="_blank" rel="noopener noreferrer" href="' + wa(c) + '">Escribir por WhatsApp</a>' : (biz.ask_promo ? '<span class="mute">No aceptó ofertas</span>' : '')}</div>`; }).join('') : '<p class="mute">Nadie por ahora. Buena señal.</p>'}</div>`;
     /* ---- resumen de la semana, listo para copiar o mandar ---- */
     const listos = L.filter(c => c.stamps >= biz.stamps_needed).length;
     const nuevosMes = R.m_new || 0;
@@ -513,16 +632,15 @@ async function statsTab() {
       (Math.max(...hrV) ? `• Horario más fuerte: de ${peak(hrV)} a ${peak(hrV) + 1} h\n` : '');
     document.getElementById('rst').textContent = resumen;
     document.getElementById('rsv').href = 'https://wa.me/?text=' + encodeURIComponent(resumen);
+    const elRsm = document.getElementById('rsm');
     document.getElementById('rsc').onclick = async () => {
-      try { await navigator.clipboard.writeText(resumen); flash(rsm, 'Resumen copiado', true); }
-      catch { window.getSelection().selectAllChildren(document.getElementById('rst')); flash(rsm, 'Seleccionado: copialo manualmente', true); }
+      try { await navigator.clipboard.writeText(resumen); flash(elRsm, 'Resumen copiado', true); }
+      catch { window.getSelection().selectAllChildren(document.getElementById('rst')); flash(elRsm, 'Seleccionado: copialo manualmente', true); }
     };
   } catch (e) { v.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
 }
 
-const savedCards = () => {
-  try { return Object.keys(localStorage).filter(k => k.startsWith('code_')).map(k => [k.slice(5), localStorage.getItem(k)]); } catch { return []; }
-};
+const savedCards = () => store.keys().filter(k => k.startsWith('code_')).map(k => [k.slice(5), store.get(k)]);
 async function walletView() {
   document.title = 'Mis tarjetas';
   legalFooter();
@@ -558,9 +676,11 @@ async function walletView() {
 async function listTab() {
   v.innerHTML = '<p class="mute">Cargando…</p>';
   try {
-    const L = await rpc('biz_customers', { p_slug: slug, p_pin: pin });
-    L.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
-    const cell = x => { x = String(x ?? ''); if (/^[=+\-@\t\r]/.test(x)) x = "'" + x; return '"' + x.replace(/"/g, '""') + '"'; };
+    const L = await rpcNuevo('biz_customers_full', 'biz_customers', { p_slug: slug, p_pin: pin });
+    L.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' }));
+    /* Excel/Sheets ejecutan lo que empieza con = + - @ como fórmula: le
+       ponemos una comilla adelante para que se muestre como texto. */
+    const cell = x => { x = String(x ?? ''); if (/^\s*[=+\-@]/.test(x) || /^[\t\r\n]/.test(x)) x = "'" + x; return '"' + x.replace(/"/g, '""') + '"'; };
     v.innerHTML = `<div class="card"><h2>${L.length} cliente${L.length === 1 ? '' : 's'}</h2>` + (L.length
       ? '<button class="alt" id="exp" style="margin:0 0 8px">Descargar lista (Excel / CSV)</button><p class="mute" style="margin:0 0 8px;font-size:13px">El archivo tiene datos personales de tus clientes. Guardalo de forma segura y usalo solo para esta tarjeta.</p>' + L.map(c =>
         `<div class="row" style="flex-wrap:wrap"><div><b>${esc(c.name)}</b><div class="mute">${esc(c.phone)} · ${c.stamps}/${biz.stamps_needed} sellos</div></div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="alt sm" data-rec="${esc(c.code)}">Pasar a otro celular</button><button class="alt sm" data-h="${esc(c.code)}">Ver historial</button><button class="alt sm" data-del="${esc(c.code)}" data-n="${esc(c.name)}">Borrar cliente</button></div><div id="h-${esc(c.code)}" style="width:100%"></div></div>`).join('')
@@ -569,19 +689,28 @@ async function listTab() {
     if (ex) ex.onclick = () => {
       const rows = [['Nombre', 'Teléfono', 'Sellos', 'Faltan para el premio', 'Premios canjeados', 'Visitas', 'Última visita', 'Hora', 'Días sin venir', 'Cumpleaños (día/mes)', 'Aceptó ofertas por WhatsApp']].concat(
         L.map(c => {
-          const d = new Date(c.last_seen);
+          /* Un cliente que nunca vino no tiene fecha: no inventamos una. */
+          const t = c.last_seen ? new Date(c.last_seen) : null;
+          const ok = t && isFinite(t.getTime());
+          const dd = diasSinVenir(c);
+          const cp = cumplePartes(c.birthday);
           return [c.name, c.phone, c.stamps, Math.max(0, biz.stamps_needed - c.stamps), c.rewards, c.visits,
-            d.toLocaleDateString('es-AR'), String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'),
-            Math.floor((Date.now() - d) / 864e5), c.birthday ? c.birthday.split('-').reverse().join('/') : '',
+            ok ? t.toLocaleDateString('es-AR') : '', ok ? String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0') : '',
+            dd === null ? '' : dd, cp ? String(cp.d).padStart(2, '0') + '/' + String(cp.m).padStart(2, '0') : '',
             biz.ask_promo ? (c.promo_ok ? 'Sí' : 'No') : 'No se preguntó'];
         }));
       const blob = new Blob(['\ufeff' + rows.map(r => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'clientes-' + slug + '.csv'; a.click();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'clientes-' + slug + '.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      /* Liberamos el archivo temporal: si no, queda guardado en memoria. */      setTimeout(() => { try { URL.revokeObjectURL(url); } catch {} }, 4000);
     };
     v.querySelectorAll('[data-rec]').forEach(b => b.onclick = () => {
       const box = document.getElementById('h-' + b.dataset.rec);
       if (box.innerHTML) { box.innerHTML = ''; return; }
-      box.innerHTML = '<div class="qr" role="img" aria-label="Código QR para pasar esta tarjeta a otro celular">' + qr(location.origin + location.pathname + '?b=' + slug + '&c=' + b.dataset.rec) + '</div><p class="mute" style="text-align:center">Que el cliente escanee este QR con su celular nuevo. No lo compartas por otro medio.</p>';
+      /* El código va en el fragmento (#) y no en la query: así no queda en el
+         historial ni se lo manda a otros sitios en el Referer. */
+      box.innerHTML = '<div class="qr" role="img" aria-label="Código QR para pasar esta tarjeta a otro celular">' + qr(location.origin + location.pathname + '?b=' + encodeURIComponent(slug) + '#c=' + encodeURIComponent(b.dataset.rec)) + '</div><p class="mute" style="text-align:center">Que el cliente escanee este QR con su celular nuevo. No lo compartas por otro medio.</p>';
     });
     v.querySelectorAll('[data-h]').forEach(b => b.onclick = async () => {
       const box = document.getElementById('h-' + b.dataset.h);
