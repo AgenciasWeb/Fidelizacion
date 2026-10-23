@@ -306,7 +306,7 @@ function loginView(err) {
          negocio: un atacante podía dejar al comercio sin poder entrar). */
       const b = await rpcOpcional('biz_login_lim', 'biz_login', { p_slug: slug, p_pin: elPin.value });
       pin = elPin.value;
-      store.set('pin_' + slug, pin);
+      store.set('pin_' + slug, pin, true);
       pinSessSet();
       store.set(bizOkKey, JSON.stringify(b || {}), true);
       biz = { ...biz, ...b };
@@ -775,7 +775,7 @@ function cfgTab() {
   /* Sin menú no hay pedidos: el interruptor de pedidos sigue al del menú. */
   const elC40 = document.getElementById('c40'), elC30 = document.getElementById('c30');
   if (elC40 && elC30) elC40.onchange = () => { elC30.disabled = !elC40.checked; if (!elC40.checked) elC30.checked = false; };
-  lo.onclick = () => { try { sessionStorage.removeItem('pin_' + slug); } catch {} location.reload(); };
+  lo.onclick = () => { try { store.del('pin_' + slug, true); } catch {} location.reload(); };
   sv.onclick = async () => {
     // Chequeos rápidos con mensaje claro antes de tocar el servidor.
     const needed = +c2.value, minmin = +c5.value || 0, exp = +c9.value || 0, wel = +c10.value || 0;
@@ -808,7 +808,7 @@ function cfgTab() {
       flash(m, 'No se pudieron guardar: ' + fallas.join(' y '), false);
       return;
     }
-    if (c6.value) { pin = c6.value; sessionStorage.setItem('pin_' + slug, pin); }
+    if (c6.value) { pin = c6.value; store.set('pin_' + slug, pin, true); }
     biz = { ...biz, name: a.p_name, stamps_needed: a.p_needed, reward: a.p_reward, color: a.p_color, min_minutes: a.p_minutes, expiry_days: a.p_expiry, welcome_stamps: a.p_welcome, allow_double: a.p_double, stamp_emoji: a.p_emoji, color2: a.p_color2, notice: a.p_notice, ready_msg: a.p_ready, ask_birthday: a.p_ask_bday, ask_promo: a.p_ask_promo, birthday_stamp: a.p_bday_stamp, birthday_msg: a.p_bday_msg, tiers: JSON.parse(a.p_tiers), reward_emoji: a.p_reward_emoji, bg_color: bgVal, address: c23.value.trim(), phone: c24.value.trim(), email: c25.value.trim() };
     if (c40) biz.menu_enabled = c40.checked;
     if (c30) biz.modulos = { ...(biz.modulos || {}), pedidos: !!(c40 && c40.checked && c30.checked) };
@@ -901,12 +901,12 @@ function menuTarjeta() {
 /* Si el negocio está conectado en este dispositivo (abrió "Ver el menú" desde
    el panel), puede ver su propio menú sin tarjeta: el panel ya lo identificó. */
 async function esDueño() {
-  const ps = sessionStorage.getItem('pin_' + slug);
+  const ps = store.get('pin_' + slug, true);
   if (!ps) return false;
   try {
     const st = await rpc('biz_stats', { p_slug: slug, p_pin: ps });
     if (st && !st.error) return true;
-    sessionStorage.removeItem('pin_' + slug);
+    store.del('pin_' + slug, true);
   } catch {}
   return false;
 }
@@ -1473,7 +1473,9 @@ cookieNotice();
     try { biz.menu_enabled = !!(await rpc('get_features', { p_slug: slug }))?.menu; } catch { biz.menu_enabled = false; }
     try { biz.modulos = (await rpc('get_modulos', { p_slug: slug })) || {}; } catch { biz.modulos = {}; }
     if (qs.has('menu') && !isPanel) return menuView();
-    const rc = qs.get('c');
+    const hash = location.hash || '';
+    const m = hash.match(/#c=([A-Z0-9]{6,8})/i);
+    const rc = m ? m[1] : null;
     if (!isPanel && rc && /^[A-Z0-9]{6,8}$/i.test(rc)) { try { localStorage.setItem('code_' + slug, rc.toUpperCase()); history.replaceState(null, '', location.pathname + '?b=' + slug); } catch {} }
     if (!isPanel) return customerView();
     if (pin) { try { const b = await rpc('biz_login', { p_slug: slug, p_pin: pin }); biz = { ...biz, ...b }; return panel(qs.get('tab') || 'stamp'); } catch {} }
