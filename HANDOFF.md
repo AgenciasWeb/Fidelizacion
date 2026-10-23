@@ -24,6 +24,20 @@ Este archivo registra cada cambio. El revisor (Claude) revisa cada entrada.
 
 ---
 
+## 2026-10-22 Borrado de todo el QR (no me gustó)
+
+- **Pedido:** El usuario pidió borrar todo lo del QR (generador, scanner, códigos visuales, pasar tarjeta a otro celular, librerías). No usar "adryss" ni datos fake.
+- **Archivos tocados:** `app.js`
+- **Qué cambió:**
+  - Se borró la función `qr()` (línea 163) y todas sus referencias (`customerView`, `posterView`, `listTab`).
+  - Se borró el botón `scan` y todo el código del escáner de cámara (`stream`, `stopCam`, `jsQR`, overlay `scanov`).
+  - El "Pasar a otro celular" ahora muestra el código como texto (`esc(b.dataset.rec)`) sin imagen.
+- **SQL a correr:** no.
+- **Cómo probar:** Entrá con el PIN, sumá sellos por nombre, y fijate que no hay botón de escanear ni códigos QR.
+- **Dudas o riesgos:** Ninguno.
+
+---
+
 ## 2026-10-22 Fix bug b: QR "Pasar a otro celular" usaba `#c=` pero el arranque leía `?c=`
 
 - **Pedido:** Fix del revisor: el QR de "Pasar a otro celular" genera `?b=slug#c=CODIGO` (fragmento), pero el arranque leía `qs.get('c')` (query string), así que el QR no funcionaba.

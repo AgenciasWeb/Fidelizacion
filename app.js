@@ -24,7 +24,7 @@ const slugOk = s => /^[a-z0-9-]{2,40}$/.test(String(s || '').toLowerCase());
 let _s = ''; try { _s = localStorage.getItem('panel_slug') || ''; } catch {}
 const _slugRaw = String(qs.get('b') || (isPanel ? _s : '')).toLowerCase();
 const slug = slugOk(_slugRaw) ? _slugRaw : '';
-let biz = null, pin = store.get('pin_' + slug, true), stream = null, poll = null;
+let biz = null, pin = store.get('pin_' + slug, true), poll = null;
 /* El PIN del negocio se valida en el servidor. Guardamos el dato del negocio ya
   logueado para no volver a validarlo (y no gastar intentos del limitador) en
    cada recarga de la página. */
@@ -160,7 +160,6 @@ function bhero(kicker, title, sub, ico, small) {
 }
 const legalFooter = () => { const f = document.getElementById('ft'); if (!f) return; f.hidden = false; f.innerHTML = ((biz && biz.name) ? `<b>${esc(biz.name)}</b> · ` : '') + '<a href="privacidad.html">Política de privacidad</a> · <a href="terminos.html">Términos y condiciones</a> · <a href="cookies.html">Cookies</a> · <a href="terminos.html#negocio">Datos del negocio</a>'; };
 function cookieNotice() { let ok = 1; try { ok = localStorage.getItem('ck_ok'); } catch {} if (ok) return; const el = document.createElement('div'); el.className = 'ck'; el.setAttribute('role', 'region'); el.setAttribute('aria-label', 'Aviso sobre cookies y almacenamiento'); el.innerHTML = '<div><p>No usamos cookies de publicidad ni de seguimiento: solo guardamos tu tarjeta en este dispositivo. <a href="cookies.html">Más información sobre cookies y almacenamiento</a>.</p><button id="cko">Entendido</button></div>'; document.body.appendChild(el); document.body.classList.add('ck-on'); document.getElementById('cko').onclick = () => { try { localStorage.setItem('ck_ok', '1'); } catch {} el.remove(); document.body.classList.remove('ck-on'); }; }
-function qr(text) { const q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag(4, 0); }
 function setBg(c) {
   const st = document.documentElement.style, ks = ['--bg', '--card', '--ink', '--mute', '--line'];
   if (!hexOk(c)) { ks.forEach(k => st.removeProperty(k)); return; }
@@ -261,7 +260,7 @@ async function customerView() {
       ${(biz.tiers || []).map(t => '<p class="mute" style="margin:4px 0;text-align:center">🎁 Sello ' + t.at + ': ' + esc(t.reward) + (c.stamps >= t.at ? ((c.claimed || []).includes(t.at) ? ' ✔ canjeado' : ' · ¡listo para canjear!') : '') + '</p>').join('')}
       ${visitaHtml(c)}</div>
       <div class="card"><p class="mute" style="text-align:center;margin:0 0 4px">Mostrá este código al negocio para sumar un sello</p>
-      <div class="qr" role="img" aria-label="Código QR de tu tarjeta de ${esc(biz.name)}. Tu código es ${esc(c.code)}">${qr(c.code)}</div><div class="code">${esc(c.code)}</div>
+      <div class="code">${esc(c.code)}</div>
       <p class="mute" style="text-align:center;margin:12px 0 0">Premios canjeados: ${c.rewards}</p></div>${bizData()}${links()}
       <p class="legal" style="text-align:center;margin-top:8px"><a href="#" id="del">Borrar mi tarjeta y mis datos</a></p><div id="dm" aria-live="polite"></div>`;
       document.getElementById('del').onclick = async e => {
@@ -321,10 +320,9 @@ function loginView(err) {
 }
 function posterView() {
   document.title = 'Cartel ' + biz.name;
-  $app.innerHTML = `<div class="card" style="text-align:center;padding:28px">${bhero('Escaneá y sumá sellos', biz.name, 'Escaneá el código y creá tu tarjeta', biz.stamp_emoji || '⭐')}<div class="qr" style="width:280px" role="img" aria-label="Código QR para escanear y crear tu tarjeta de ${esc(biz.name)}">${qr(location.origin + location.pathname + '?b=' + slug)}</div><p class="mute">Premio: ${esc(biz.reward_emoji || '🎁')} ${esc(biz.reward)}</p></div><button class="noprint" id="prn">Imprimir</button>`;
+  $app.innerHTML = `<div class="card" style="text-align:center;padding:28px">${bhero('Escaneá y sumá sellos', biz.name, 'Escaneá el código y creá tu tarjeta', biz.stamp_emoji || '⭐')}<p style="font-size:14px;color:var(--mute);margin-top:4px">Link: <b>${esc(location.origin + location.pathname + '?b=' + slug)}</b></p><p class="mute">Premio: ${esc(biz.reward_emoji || '🎁')} ${esc(biz.reward)}</p></div><button class="noprint" id="prn">Imprimir</button>`;
   document.getElementById('prn').onclick = () => window.print();
 }
-function stopCam() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } const ov = document.getElementById('scanov'); if (ov) ov.remove(); }
 
 /* Avisos para el dueño: premios por canjear, clientes nuevos hoy y clientes
    que hace mucho que no vienen. Se cargan aparte para no demorar el panel. */
@@ -357,7 +355,7 @@ function panel(tab) {
      ahí lo vuelve a activar (antes quedaba escondida y no había forma). */
   if (!({ stamp: 1, list: 1, stats: 1, cfg: 1, menu: 1, ped: 1 })[tab] || (tab === 'ped' && !biz.modulos?.pedidos)) tab = 'stamp';
   if (menuDirty && tab !== 'menu' && !confirm('Tenés cambios sin guardar en el menú. ¿Salir sin guardar?')) return;
-  stopCam(); stopMenuWarn();
+  stopMenuWarn();
   if (stampIv) { clearInterval(stampIv); stampIv = null; }
   if (pedIv) { clearInterval(pedIv); pedIv = null; }
   pedTabOn = false; stampTabOn = false;
@@ -379,7 +377,6 @@ function panel(tab) {
 let stampIv = null;
 async function stampTab() {
   v.innerHTML = `<div class="card">
-    <button id="scan" class="scanbtn">📷 Escanear el QR del cliente</button>
     <label for="q">Buscar por nombre o código</label>
     <input id="q" autocomplete="off" inputmode="search" placeholder="Ej: Ana, o el código de su tarjeta">
     ${biz.allow_double ? '<label class="consent" style="font-size:15px;margin-top:10px"><input type="checkbox" id="dbl"> Sellar 2 sellos por visita</label>' : ''}
@@ -449,31 +446,6 @@ async function stampTab() {
   /* El interval solo corre si la pestaña "Mostrador" sigue abierta: si el
      negocio cambia de pestaña, el interval viejo sigue preguntando solo. */
   stampIv = setInterval(() => { if (!document.hidden && !busy && stampTabOn) load(); }, 20000);
-  const scan = document.getElementById('scan');
-  scan.onclick = async () => {
-    const ov = document.createElement('div');
-    ov.id = 'scanov';
-    ov.innerHTML = '<video playsinline muted></video><div class="sh"><div class="box"></div></div><p class="hint">Apuntá al código QR del cliente</p><button class="x" aria-label="Cerrar el escáner">✕</button>';
-    document.body.appendChild(ov);
-    const close = () => stopCam();
-    ov.querySelector('.x').onclick = close;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      const sv = ov.querySelector('video');
-      sv.srcObject = stream; await sv.play();
-      const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
-      let leido = false;
-      (function loop() {
-        if (leido || !stream) return;
-        if (sv.videoWidth) {
-          cv.width = sv.videoWidth; cv.height = sv.videoHeight; cx.drawImage(sv, 0, 0);
-          const r = jsQR(cx.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height);
-          if (r && /^[A-Z0-9]{6,8}$/i.test(r.data.trim())) { leido = true; close(); tocar(r.data.trim().toUpperCase()); return; }
-        }
-        requestAnimationFrame(loop);
-      })();
-    } catch { close(); bnr.innerHTML = '<div class="msg err" role="alert">No se pudo abrir la cámara. Buscá al cliente por nombre.</div>'; }
-  };
 }
 
 /* ---- PEDIDOS: el sello se suma al entregar el pedido (módulo opt-in) ---- */
@@ -708,9 +680,7 @@ async function listTab() {
     v.querySelectorAll('[data-rec]').forEach(b => b.onclick = () => {
       const box = document.getElementById('h-' + b.dataset.rec);
       if (box.innerHTML) { box.innerHTML = ''; return; }
-      /* El código va en el fragmento (#) y no en la query: así no queda en el
-         historial ni se lo manda a otros sitios en el Referer. */
-      box.innerHTML = '<div class="qr" role="img" aria-label="Código QR para pasar esta tarjeta a otro celular">' + qr(location.origin + location.pathname + '?b=' + encodeURIComponent(slug) + '#c=' + encodeURIComponent(b.dataset.rec)) + '</div><p class="mute" style="text-align:center">Que el cliente escanee este QR con su celular nuevo. No lo compartas por otro medio.</p>';
+      box.innerHTML = '<p class="mute" style="text-align:center">Pasá el código <b style="font-family:monospace">' + esc(b.dataset.rec) + '</b> al otro celular. El cliente lo escribe en la app: <b>?b=' + esc(slug) + '#c=' + esc(b.dataset.rec) + '</b></p>';
     });
     v.querySelectorAll('[data-h]').forEach(b => b.onclick = async () => {
       const box = document.getElementById('h-' + b.dataset.h);
