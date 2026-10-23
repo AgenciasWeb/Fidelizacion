@@ -2,6 +2,9 @@
 try { if (window.top !== window.self) window.top.location.href = window.self.location.href; } catch (e) { document.documentElement.style.display = 'none'; }
 
 /* ====== CONFIGURACIÓN: pegá tus datos de Supabase (Project Settings > API) ====== */
+/* La clave "publishable" de Supabase está hecha para ir en el navegador: no es
+   un secreto. Lo que protege los datos son las políticas RLS y las funciones
+   security definer de la base. */
 const SUPABASE_URL = "https://bnyfhoxrezvotfktrxmb.supabase.co";
 const SUPABASE_KEY = "sb_publishable_tSt87CXb32Up5zSTfgTfZg_uVVMXuuS";
 /* ================================================================================ */
@@ -320,7 +323,7 @@ function loginView(err) {
 }
 function posterView() {
   document.title = 'Cartel ' + biz.name;
-  $app.innerHTML = `<div class="card" style="text-align:center;padding:28px">${bhero('Escaneá y sumá sellos', biz.name, 'Escaneá el código y creá tu tarjeta', biz.stamp_emoji || '⭐')}<p style="font-size:14px;color:var(--mute);margin-top:4px">Link: <b>${esc(location.origin + location.pathname + '?b=' + slug)}</b></p><p class="mute">Premio: ${esc(biz.reward_emoji || '🎁')} ${esc(biz.reward)}</p></div><button class="noprint" id="prn">Imprimir</button>`;
+  $app.innerHTML = `<div class="card" style="text-align:center;padding:28px">${bhero('Entrá y sumá sellos', biz.name, 'Entregá este link y el cliente crea su tarjeta', biz.stamp_emoji || '⭐')}<p style="font-size:14px;color:var(--mute);margin-top:4px">Link: <b>${esc(location.origin + location.pathname + '?b=' + slug)}</b></p><p class="mute">Premio: ${esc(biz.reward_emoji || '🎁')} ${esc(biz.reward)}</p></div><button class="noprint" id="prn">Imprimir</button>`;
   document.getElementById('prn').onclick = () => window.print();
 }
 
@@ -802,14 +805,15 @@ function stopMenuWarn() { menuDirty = false; removeEventListener('beforeunload',
 addEventListener('beforeunload', menuUnload);
 const normText = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-/* ---- MENÚ: para entrar hace falta la tarjeta ----
-   El menú es del negocio, pero el cliente entra con su tarjeta: así el sello
-   es consecuencia de su visita y nunca se pide el teléfono a la mitad.
-   Si ya tiene tarjeta (de este celular o de otro), entra con su código. */
+/* ---- MENÚ: se puede mirar sin tarjeta; para PEDIR hace falta la tarjeta ----
+   Cualquiera puede ver los productos y precios. Para mandar un pedido (y que
+   se sume el sello) el cliente tiene que tener su tarjeta: así no entran
+   pedidos sueltos con nombres inventados. Si ya la tiene en este celular,
+   entra solo; si no, se le pide nombre y teléfono en el momento de pedir. */
 function menuTarjeta() {
-  $app.innerHTML = `${bhero('Menú', biz.name, 'Creá tu tarjeta para ver el menú y hacer tu pedido', '🎴', true)}
-  <div class="card"><h2>Primero creá tu tarjeta</h2>
-    <p class="mute" style="margin:0 0 10px">Para ver el menú y pedir necesitás tu tarjeta de ${esc(biz.name)}. Solo pedimos tu nombre y tu teléfono: con eso juntás sellos y ganás ${esc(biz.reward_emoji || '🎁')} ${esc(biz.reward)}.</p>
+  $app.innerHTML = `${bhero('Menú', biz.name, 'Mirá el menú cuando quieras. Para pedir, creá tu tarjeta', '🎴', true)}
+  <div class="card"><h2>Creá tu tarjeta para pedir</h2>
+    <p class="mute" style="margin:0 0 10px">Para mandar tu pedido y sumar sellos necesitás tu tarjeta de ${esc(biz.name)}. Podés mirar el menú sin crearla. Solo pedimos tu nombre y tu teléfono: con eso juntás sellos y ganás ${esc(biz.reward_emoji || '🎁')} ${esc(biz.reward)}.</p>
     ${biz.welcome_stamps > 0 ? `<p class="mute">Te regalamos ${biz.welcome_stamps} sello${biz.welcome_stamps > 1 ? 's' : ''} de bienvenida.</p>` : ''}
     <form id="frm" novalidate>
     <label for="n">Tu nombre</label><input id="n" autocomplete="name" maxlength="80" required aria-required="true">
@@ -818,13 +822,14 @@ function menuTarjeta() {
     ${biz.ask_birthday ? '<label for="bd">Tu cumpleaños (opcional)</label><input id="bd" type="date">' : ''}
     ${biz.ask_promo ? '<label class="consent"><input type="checkbox" id="pm"> Quiero recibir ofertas y novedades por WhatsApp (opcional)</label>' : ''}
     <label class="consent"><input type="checkbox" id="ac" required aria-required="true"> Acepto la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a> y el uso de mis datos solo para esta tarjeta de sellos.</label>
-    <button type="submit" id="go">Crear mi tarjeta y ver el menú</button><div id="m" aria-live="polite"></div></form></div>
+    <button type="submit" id="go">Crear mi tarjeta y pedir</button><div id="m" aria-live="polite"></div></form></div>
   <div class="card"><details id="det"><summary style="cursor:pointer;font-weight:700">Ya tengo mi tarjeta: entrar con mi código</summary>
     <form id="frm2" novalidate style="margin-top:12px">
     <label for="cd">Tu código de tarjeta</label><input id="cd" autocapitalize="characters" autocomplete="off" maxlength="8" placeholder="Ej: A1B2C3D4" required aria-required="true">
-    <p class="mute" style="margin:6px 0 0;font-size:13px">Son los 8 caracteres de tu QR (si te los mandaron por WhatsApp, usá ese mensaje).</p>
+    <p class="mute" style="margin:6px 0 0;font-size:13px">Es el código que te dio el negocio o el que figura en tu tarjeta.</p>
     <button type="submit" id="go2">Entrar con mi código</button><div id="m2" aria-live="polite"></div></form></details></div>
-  <a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios</a>`;
+  <a class="btn alt" style="display:block;margin-top:12px" href="?b=${encodeURIComponent(slug)}&menu=1">← Volver al menú sin crear la tarjeta</a>
+  <a class="btn alt" style="display:block;margin-top:8px" href="menus/">📍 Ver los menús de otros negocios</a>`;
   const elN = document.getElementById('n'), elP = document.getElementById('p'), ph = document.getElementById('ph'), m = document.getElementById('m');
   elP.oninput = () => {
     const v = normPhone(elP.value);
@@ -892,10 +897,10 @@ async function menuView() {
     $app.innerHTML = `${bhero('Menú', biz.name, 'Este negocio todavía no cargó su menú', '🍽️', true)}<div class="card"><p class="mute" style="margin:0">Este negocio no tiene menú publicado por ahora.</p></div>${installHtml('menus')}${tieneTarjeta ? volver : `<a class="btn alt" style="display:block;margin-top:12px" href="?b=${encodeURIComponent(slug)}">🎴 Crear mi tarjeta de sellos</a>`}`;
     return;
   }
-  /* Para ver el menú hace falta la tarjeta del negocio: así el cliente no entra
-     a un menú donde después le dicen que no tiene tarjeta. Si el código guardado
-     ya no existe (borró la tarjeta en otro celular), se lo vuelve a pedir.
-     El negocio dueño, si está conectado en este dispositivo, sí puede verlo. */
+  /* El menú se puede mirar sin tarjeta. Solo verificamos si hay una tarjeta
+     guardada para mostrar (o no) el aviso de "creá tu tarjeta para pedir".
+     Si el código guardado ya no existe, se borra y la persona sigue viendo
+     el menú: la tarjeta se le pide recién al confirmar el pedido. */
   const code = localStorage.getItem('code_' + slug);
   let acceso = false;
   if (code) {
@@ -904,12 +909,13 @@ async function menuView() {
       if (c) acceso = true;
       else localStorage.removeItem('code_' + slug);
     } catch (e) {
-      $app.innerHTML = `<div class="msg err" role="alert">${esc(e.message)}</div><p class="legal" style="text-align:center"><a href="?b=${encodeURIComponent(slug)}&menu=1">Volver a intentar</a></p>`;
-      return;
+      /* Si falla la red no bloqueamos el menú: se ve igual y al pedir se
+         vuelve a intentar. */
+      acceso = false;
     }
   }
-  if (!acceso && !(await esDueño())) return menuTarjeta();
-  $app.innerHTML = `${bhero('Menú', biz.name, '<span id="mu">Cargando menú…</span>', '🍽️')}
+  const avisoTarjeta = acceso ? '' : `<div class="card notice" style="margin-bottom:12px">🎴 Podés mirar el menú. Para <b>pedir</b> y sumar sellos necesitás tu tarjeta.<br><button class="sm" id="crearTarjeta" style="margin-top:10px">Crear mi tarjeta</button></div>`;
+  $app.innerHTML = `${bhero('Menú', biz.name, '<span id="mu">Cargando menú…</span>', '🍽️')}${avisoTarjeta}
   <div class="card"><label for="mq">Buscar en el menú</label><input id="mq" type="search" autocomplete="off" placeholder="Ej: café, torta"></div>
   <div id="misped"></div><div id="cart"></div><div id="pmsg" aria-live="polite"></div>
   <div class="mwrap"><div id="ml"></div></div>
@@ -1432,7 +1438,7 @@ cookieNotice();
     return;
   }
   if (qs.has('mis-tarjetas') || (!slug && savedCards().length)) return walletView();
-  if (!slug) { $app.innerHTML = `${bhero('Tarjeta de sellos', 'Falta el negocio', 'Pedile al negocio el link o el código QR correcto', '🔗', true)}<div class="card"><p class="mute" style="margin:0 0 10px">El link tiene que incluir el negocio. Ejemplo: <b>?b=nombre-del-negocio</b></p><a class="btn alt" style="display:block" href="menus/">📍 Ver los menús de los negocios de la zona</a><a class="btn alt" style="display:block;margin-top:12px" href="tarjetas/">🎴 Mis tarjetas</a><a class="btn alt" style="display:block;margin-top:12px" href="panel/">⚙️ Soy un negocio (panel)</a></div>`; return; }
+  if (!slug) { $app.innerHTML = `${bhero('Tarjeta de sellos', 'Falta el negocio', 'Pedile al negocio el link correcto para crear tu tarjeta', '🔗', true)}<div class="card"><p class="mute" style="margin:0 0 10px">El link tiene que incluir el negocio. Ejemplo: <b>?b=nombre-del-negocio</b></p><a class="btn alt" style="display:block" href="menus/">📍 Ver los menús de los negocios de la zona</a><a class="btn alt" style="display:block;margin-top:12px" href="tarjetas/">🎴 Mis tarjetas</a><a class="btn alt" style="display:block;margin-top:12px" href="panel/">⚙️ Soy un negocio (panel)</a></div>`; return; }
   try {
     biz = await rpc('get_business', { p_slug: slug });
     if (!biz) { $app.innerHTML = '<div class="msg err">Negocio no encontrado</div>'; return; }

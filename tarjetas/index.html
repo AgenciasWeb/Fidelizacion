@@ -43,7 +43,18 @@ button:not(.alt):active{transform:scale(.985)}
 <div class="aviso" id="ayuda" hidden></div>
 </main>
 <script>
-  document.getElementById('irapp').onclick = function () { location.href = '../?mis-tarjetas'; };
+  /* Si el link trae el negocio (?b=pepe), "Abrir mis tarjetas" va derecho a la
+     tarjeta de ese negocio; si no, a la lista de todas las tarjetas. */
+  function negocioDelLink() {
+    var m = location.search.match(/[?&]b=([^&]+)/);
+    if (!m) return '';
+    try { return decodeURIComponent(m[1]); } catch (e) { return ''; }
+  }
+  function destino() {
+    var s = negocioDelLink();
+    return (s && /^[a-z0-9-]{2,40}$/i.test(s)) ? ('../?b=' + encodeURIComponent(s.toLowerCase())) : '../?mis-tarjetas';
+  }
+  document.getElementById('irapp').onclick = function () { location.href = destino(); };
 
   var btn = document.getElementById('inst'), ayuda = document.getElementById('ayuda');
   var ev = null;
@@ -60,7 +71,7 @@ button:not(.alt):active{transform:scale(.985)}
       : 'Tocá el menú del navegador (⋮ en Android, o <b>Compartir</b> en iPhone) y elegí <b>“Instalar aplicación”</b> o <b>“Agregar a pantalla de inicio”</b>.';
   };
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { scope: './' }).catch(function () {});
-  if (matchMedia('(display-mode: standalone)').matches || navigator.standalone) location.replace('../?mis-tarjetas');
+  if (matchMedia('(display-mode: standalone)').matches || navigator.standalone) location.replace(destino());
 </script>
 </body>
 </html>

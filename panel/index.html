@@ -43,10 +43,24 @@ button:not(.alt):active{transform:scale(.985)}
 <div class="aviso" id="ayuda" hidden></div>
 </main>
 <script>
+  /* Arma a dónde ir. Si el link ya trae el negocio (?b=pepe), se usa ese; si no,
+     el último negocio guardado en este celular. Así el mismo panel sirve para
+     todos los negocios: cada uno recibe su propio link. */
+  function negocioDelLink() {
+    var m = location.search.match(/[?&]b=([^&]+)/);
+    if (!m) return '';
+    try { return decodeURIComponent(m[1]); } catch (e) { return ''; }
+  }
   function destino() {
-    var s = '';
-    try { s = localStorage.getItem('panel_slug') || ''; } catch (e) {}
+    var s = negocioDelLink();
+    if (!s) { try { s = localStorage.getItem('panel_slug') || ''; } catch (e) {} }
     return s ? ('../?b=' + encodeURIComponent(s) + '&panel=1') : '../?panel=1';
+  }
+  /* Cuando llega con ?b=, lo guardamos como el último negocio: la próxima vez
+     que abra la app instalada, ya sabe a cuál entrar. */
+  var delLink = negocioDelLink();
+  if (delLink && /^[a-z0-9-]{2,40}$/.test(delLink.toLowerCase())) {
+    try { localStorage.setItem('panel_slug', delLink.toLowerCase()); } catch (e) {}
   }
   document.getElementById('irapp').onclick = function () { location.href = destino(); };
 

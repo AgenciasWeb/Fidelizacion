@@ -13,9 +13,14 @@ desktop.ini
 npm-debug.log*
 _test*.html
 
-# Material interno: NUNCA publicar (GitHub Pages sirve todo lo que este en el repo)
+# Material interno y notas: NUNCA publicar (GitHub Pages sirve todo lo que esté en el repo)
 sql/
 *.zip
 GUIA-*.md
 seguridad-*.sql
 *.local.md
+HANDOFF.md
+ESTADO.md
+README.md
+test_*.html
+
