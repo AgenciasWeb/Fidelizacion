@@ -479,14 +479,13 @@ async function pedidosTab() {
         const tag = orig === 'mesa'
           ? (o.mesa ? `🍽️ Mesa ${esc(o.mesa)}` : '🍽️ En mesa (sin número)')
           : (orig === 'retirar' ? '🏠 Retirar en el local' : '🥡 Para llevar');
-        return `<div class="ocard"><div class="ohead"><b>${esc(o.cliente)}</b><span class="mute">${tag} · ${hace(o.creado)}</span></div><ul class="olits">${its}</ul>${o.nota ? `<p class="onota">💬 ${esc(o.nota)}</p>` : ''}<div class="ototal">Total ${money.format(Number(o.total) || 0)} <span class="mute" style="font-weight:400">· lo cargó el cliente</span></div><div class="erow"><button class="sm" data-e="${o.id}">Entregar + 1 sello</button><button class="alt sm" data-c="${o.id}">Cancelar pedido</button></div></div>`;
+        return `<div class="ocard"><div class="ohead"><b>${esc(o.cliente)}</b><span class="mute">${tag} · ${hace(o.creado)}</span></div><ul class="olits">${its}</ul>${o.nota ? `<p class="onota">💬 ${esc(o.nota)}</p>` : ''}<div class="ototal">Total ${money.format(Number(o.total) || 0)} <span class="mute" style="font-weight:400">· lo cargó el cliente</span></div><div class="erow"><button class="sm" data-e="${o.id}">Entregar</button><button class="alt sm" data-c="${o.id}">Cancelar pedido</button></div></div>`;
       }).join('');
       plist.querySelectorAll('[data-e]').forEach(b => b.onclick = async () => {
         b.disabled = true;
         try {
           const r = await rpc('pedido_entregar', { p_slug: slug, p_pin: pin, p_id: +b.dataset.e });
-          const s = r.sello || {};
-          pbnr.innerHTML = `<div class="mbanner">✓ Pedido entregado · sello de ${esc(s.name || 'cliente')}: ${s.stamps} de ${s.needed}</div>`;
+          pbnr.innerHTML = `<div class="mbanner">✓ Pedido entregado</div>`;
           load();
         } catch (e) { pbnr.innerHTML = `<div class="msg err" role="alert">${esc(e.message)}</div>`; b.disabled = false; }
       });
@@ -547,7 +546,7 @@ function links() {
   const url = location.origin + location.pathname + '?b=' + encodeURIComponent(slug);
   const invit = `¡${biz.name} te regala premios! 🎁 Juntá ${biz.stamps_needed} sellos y llevate ${biz.reward_emoji || '🎁'} ${biz.reward}. Sacá tu tarjeta acá 👉 ${url}`;
   const invita = `<a class="btn alt" style="display:block;margin-top:12px" href="https://wa.me/?text=${encodeURIComponent(invit)}" target="_blank" rel="noopener noreferrer">💬 Invitar a un amigo</a>`;
-  return `<div class="card">${sig}${sig ? '<p class="mute" style="text-align:center;margin:14px 0 0">o</p>' : ''}<a class="btn alt" style="display:block;margin-top:12px" href="?mis-tarjetas">🎴 Ver todas mis tarjetas</a>${invita}</div>`;
+  return `<div class="card">${sig}${sig ? '<p class="mute" style="text-align:center;margin:14px 0 0">o</p>' : ''}${invita}</div>`;
 }
 function bizData() {
   if (!biz || (!biz.address && !biz.phone && !biz.email)) return '';
@@ -827,8 +826,7 @@ function menuTarjeta() {
     <label for="cd">Tu código de tarjeta</label><input id="cd" autocapitalize="characters" autocomplete="off" maxlength="8" placeholder="Ej: A1B2C3D4" required aria-required="true">
     <p class="mute" style="margin:6px 0 0;font-size:13px">Es el código que te dio el negocio o el que figura en tu tarjeta.</p>
     <button type="submit" id="go2">Entrar con mi código</button><div id="m2" aria-live="polite"></div></form></details></div>
-  <a class="btn alt" style="display:block;margin-top:12px" href="?b=${encodeURIComponent(slug)}&menu=1">← Volver al menú sin crear la tarjeta</a>
-  <a class="btn alt" style="display:block;margin-top:8px" href="menus/">📍 Ver los menús de otros negocios</a>`;
+  <a class="btn alt" style="display:block;margin-top:12px" href="?b=${encodeURIComponent(slug)}&menu=1">← Volver al menú sin crear la tarjeta</a>`;
   const elN = document.getElementById('n'), elP = document.getElementById('p'), ph = document.getElementById('ph'), m = document.getElementById('m');
   elP.oninput = () => {
     const v = normPhone(elP.value);
@@ -933,7 +931,6 @@ async function menuView() {
     </div>
   </div>
   ${installHtml('menus')}
-  <a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios</a>
   ${volver}`;
   const money = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 2 });
   /* ---- Carrito y pedido: solo si el negocio tiene el módulo de pedidos ---- */
@@ -946,7 +943,7 @@ async function menuView() {
     try {
       const origen = document.querySelector('input[name="porigen"]:checked')?.value || 'llevar';
       const mesa = (document.getElementById('pmesa')?.value || '').trim();
-      await rpc('pedido_crear', { p_slug: slug, p_codigo: code, p_items: cart.map(x => ({ n: x.n, p: x.p, q: x.q, e: x.e })), p_total: total(), p_cliente: nombre || null, p_nota: (document.getElementById('pnota')?.value || '').trim(), p_origen: origen, p_mesa: origen === 'mesa' ? mesa : null });
+      await rpc('pedido_crear', { p_slug: slug, p_codigo: code, p_items: cart.map(x => ({ id: x.id || x.n, p: x.p, q: x.q, e: x.e })), p_total: total(), p_cliente: nombre || null, p_nota: (document.getElementById('pnota')?.value || '').trim(), p_origen: origen, p_mesa: origen === 'mesa' ? mesa : null });
       cart = []; renderCart();
       msg.innerHTML = '<div class="msg ok">✓ ¡Pedido enviado! Te lo preparamos en el local.</div>';
     } catch (e) { msg.innerHTML = `<div class="msg err" role="alert">${esc(e.message)}</div>`; if (btn) btn.disabled = false; }
@@ -1167,8 +1164,7 @@ async function menuTab() {
   <p class="mute" style="margin:0 0 8px">Cargá los productos y las fotos de cada categoría. Tocá “Guardar cambios” y se ven en el menú público al instante.</p>
   <p class="mute" id="mt" style="margin:0 0 10px">Última actualización: —</p>
   <label for="mlk">Link del menú para tus clientes</label><input id="mlk" readonly value="">
-  <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="alt sm" id="mcp">Copiar link</button><a class="btn alt sm" id="mwa" target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a><a class="btn alt sm" id="mver" target="_blank">Ver el menú</a></div><div id="mcs" aria-live="polite"></div>
-  <a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios de la zona</a>
+  <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="alt sm" id="mcp">Copiar link</button><a class="btn alt sm" id="mwa" target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a></div><div id="mcs" aria-live="polite"></div>
   <button class="alt" id="moff" style="margin-top:12px;opacity:.85">Ocultar mi menú (desactivarlo)</button><div id="moffm" aria-live="polite"></div></div>
   <div class="card"><div id="magotados" class="mute" style="margin:0 0 10px"></div><div id="mg"></div>
   <button class="alt" id="mnc">+ Nueva categoría</button>
