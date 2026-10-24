@@ -1076,15 +1076,34 @@ async function menuView() {
         const nota = String(x.price_note || '').trim();
         const precio = nota ? esc(nota) : money.format(Number(x.price) || 0);
         const desc = String(x.description || '').trim();
-        return `<button class="mcard${x.available ? '' : ' sold'}" data-it="${esc(x.name)}"><div class="mcard-imgwrap">${ph ? `<img class="mcard-img" src="${esc(ph)}" alt="" loading="lazy" onerror="this.style.display='none'; if(this.nextElementSibling){this.nextElementSibling.style.display='grid';}">` : ''}<div class="mcard-ph" style="${ph ? 'display:none' : ''}">${em || '🍽️'}</div></div><div class="mcard-body"><div class="mcard-top"><div class="mcard-name">${esc(x.name)}</div>${x.featured ? '<span class="fdest">⭐</span>' : ''}</div>${desc ? `<div class="mcard-desc">${esc(desc)}</div>` : ''}<div class="mcard-foot"><div class="mcard-price">${precio}</div>${x.available ? '' : '<span class="mcard-badge">Agotado</span>'}</div></div></button>`;
+        return `<div class="mcard${x.available ? '' : ' sold'}" data-it="${esc(x.name)}" role="button" tabindex="0" aria-label="Ver ${esc(x.name)}"><div class="mcard-imgwrap">${ph ? `<img class="mcard-img" src="${esc(ph)}" alt="" loading="lazy" onerror="this.style.display='none'; if(this.nextElementSibling){this.nextElementSibling.style.display='grid';}">` : ''}<div class="mcard-ph" style="${ph ? 'display:none' : ''}">${em || '🍽️'}</div>${x.available && conPedidos ? `<button class="mcard-add" data-add="${esc(x.name)}" aria-label="Agregar ${esc(x.name)} al pedido">+</button>` : ''}</div><div class="mcard-body"><div class="mcard-top"><div class="mcard-name">${esc(x.name)}</div>${x.featured ? '<span class="fdest">⭐</span>' : ''}</div>${desc ? `<div class="mcard-desc">${esc(desc)}</div>` : ''}<div class="mcard-foot"><div class="mcard-price">${precio}</div>${x.available ? '' : '<span class="mcard-badge">Agotado</span>'}</div></div></div>`;
       }).join('')}</div>`;
     }).join('');
     box.querySelectorAll('[data-it]').forEach(b => {
-      b.onclick = () => {
+      const open = () => {
         const it = (data.items || []).find(x => x.name === b.dataset.it);
         if (!it) return;
         if (!it.available) return;
         openItem(it);
+      };
+      b.onclick = open;
+      b.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } };
+    });
+    box.querySelectorAll('[data-add]').forEach(btn => {
+      btn.onclick = e => {
+        e.stopPropagation();
+        const it = (data.items || []).find(x => x.name === btn.dataset.add);
+        if (!it || !it.available) return;
+        if (!conPedidos) return;
+        const id = String(it.id || '');
+        const l = cart.find(x => (id && x.id === id) || (!id && x.n === it.name));
+        if (l) l.q = Math.min(99, l.q + 1);
+        else cart.push({ id: id || it.name, n: String(it.name || ''), p: Number(it.price) || 0, e: String(it.emoji || '').trim(), q: 1 });
+        if (typeof guardarCarrito === 'function') guardarCarrito();
+        renderCart();
+        const msg = document.getElementById('pmsg');
+        if (msg) msg.innerHTML = '<div class="msg ok" style="margin-top:10px">✓ Agregado al pedido</div>';
+        setTimeout(() => { if (msg) msg.innerHTML = ''; }, 1400);
       };
     });
   };
