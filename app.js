@@ -365,6 +365,7 @@ function panel(tab) {
   if (pedIv) { clearInterval(pedIv); pedIv = null; }
   pedTabOn = false; stampTabOn = false;
   legalFooter();
+  try { const f = await rpc('get_features', { p_slug: slug }); if (f) biz.menu_enabled = !!f.menu; } catch {}
   const T = [['stamp', 'Mostrador']];
   if (biz.modulos?.pedidos) T.push(['ped', 'Pedidos']);
   T.push(['list', 'Clientes'], ['stats', 'Resumen'], ['cfg', 'Ajustes']);
