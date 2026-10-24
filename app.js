@@ -265,7 +265,7 @@ async function customerView() {
       <div class="card"><p class="mute" style="text-align:center;margin:0 0 4px">Mostrá este código al negocio para sumar un sello</p>
       <div class="code">${esc(c.code)}</div>
       <p class="mute" style="text-align:center;margin:12px 0 0">Premios canjeados: ${c.rewards}</p></div>${bizData()}${links()}
-      <p class="legal" style="text-align:center;margin-top:8px"><a href="#" id="del">Borrar mi tarjeta y mis datos</a></p><div id="dm" aria-live="polite"></div><a class="btn alt" style="display:block;margin-top:12px;text-align:center" href="?b=${encodeURIComponent(slug)}&menu=1">🍽️ Ver el menú de ${esc(biz.name)}</a>`;
+      <p class="legal" style="text-align:center;margin-top:8px"><a href="#" id="del">Borrar mi tarjeta y mis datos</a></p><div id="dm" aria-live="polite"></div>`;
       document.getElementById('del').onclick = async e => {
         e.preventDefault();
         if (!confirm('¿Borrar tu tarjeta de ' + biz.name + '? Se eliminan tu nombre, teléfono y todos tus sellos. No se puede deshacer.')) return;
@@ -543,12 +543,11 @@ function installHtml(kind) {
 }
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-inst]'); if (b) installApp(b); });
 function links() {
-  const mn = (biz && biz.menu_enabled) ? `<a class="btn alt" style="display:block;margin-top:12px" href="?b=${encodeURIComponent(slug)}&menu=1">🍽️ Ver el menú</a>` : '';
   const sig = installHtml('card');
   const url = location.origin + location.pathname + '?b=' + encodeURIComponent(slug);
   const invit = `¡${biz.name} te regala premios! 🎁 Juntá ${biz.stamps_needed} sellos y llevate ${biz.reward_emoji || '🎁'} ${biz.reward}. Sacá tu tarjeta acá 👉 ${url}`;
   const invita = `<a class="btn alt" style="display:block;margin-top:12px" href="https://wa.me/?text=${encodeURIComponent(invit)}" target="_blank" rel="noopener noreferrer">💬 Invitar a un amigo</a>`;
-  return `<div class="card">${sig}${sig ? '<p class="mute" style="text-align:center;margin:14px 0 0">o</p>' : ''}${mn}<a class="btn alt" style="display:block;margin-top:12px" href="?mis-tarjetas">🎴 Ver todas mis tarjetas</a><a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios</a>${invita}</div>`;
+  return `<div class="card">${sig}${sig ? '<p class="mute" style="text-align:center;margin:14px 0 0">o</p>' : ''}<a class="btn alt" style="display:block;margin-top:12px" href="?mis-tarjetas">🎴 Ver todas mis tarjetas</a>${invita}</div>`;
 }
 function bizData() {
   if (!biz || (!biz.address && !biz.phone && !biz.email)) return '';
