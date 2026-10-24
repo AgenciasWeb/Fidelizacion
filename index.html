@@ -120,8 +120,8 @@ details summary{cursor:pointer;color:var(--mute);font-size:14px;margin-top:8px}
 .mcard.sold{opacity:.78}
 .mcard.sold .mcard-imgwrap{filter:grayscale(.15)}
 .mcard.sold .mcard-price{color:var(--mute)}
-.mcard-badge{padding:2px 8px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:800;text-transform:uppercase}
-@media (prefers-color-scheme:dark){.mcard-badge{background:#450a0a;color:#fca5a5}}
+.mcard,.mtile{color:var(--ink)}.mcard-badge{padding:2px 8px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:800;text-transform:uppercase}
+@media (prefers-color-scheme:dark){.mcard,.mtile{color:var(--ink)}.mcard-badge{background:#450a0a;color:#fca5a5}}
 /* Modal producto */
 .pmodal{position:fixed;inset:0;z-index:95;display:none;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.65)}
 .pmodal.on{display:flex}
@@ -190,7 +190,7 @@ details summary{cursor:pointer;color:var(--mute);font-size:14px;margin-top:8px}
 .marcanuevo{display:inline-block;margin-left:6px;font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:linear-gradient(135deg,var(--ac),var(--ac2));color:#fff}
 .ecat{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:16px}
 .ecat:first-child{margin-top:0}
-.tabs.t5{gap:4px}
+.tabs{flex-wrap:wrap}.tabs.t5{gap:4px}
 .tabs.t5 button{flex:1 1 0;min-width:0;font-size:12px;padding:8px 2px;line-height:1.2;white-space:normal}
 /* ---- Modo mostrador: sellar en 1 toque ---- */
 .msec{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);margin:18px 0 8px}
@@ -223,6 +223,6 @@ details summary{cursor:pointer;color:var(--mute);font-size:14px;margin-top:8px}
 <a class="skip" href="#app">Saltar al contenido</a>
 <main id="app" tabindex="-1"></main>
 <footer id="ft" class="legal" hidden></footer>
-<script src="app.js?v=20261025i"></script>
+<script src="app.js?v=20261025j"></script>
 </body>
 </html>
