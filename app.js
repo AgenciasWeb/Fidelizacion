@@ -335,7 +335,7 @@ async function cargarAvisos() {
   if (!box) return;
   try {
     const Llist = await rpcNuevo('biz_customers_full', 'biz_customers', { p_slug: slug, p_pin: pin });
-    const L = Array.isArray(Llist) ? Llist : (Llist && Llist.message ? [] : (Array.isArray(Llist && Llist.data ? Llist.data : Llist) ? (Llist.data ? Llist.data : Llist) : []));
+    const L = (Array.isArray(Llist) ? Llist : (Llist && typeof Llist === 'object' ? [Llist] : [])).filter ? (Array.isArray(Llist) ? Llist : (Llist && typeof Llist === 'object' ? [Llist] : [])) : [];
     if (!document.getElementById('avisos')) return;
     if (!L || !Array.isArray(L)) return;
     const listos = L.filter(c => c.stamps >= biz.stamps_needed).length;
