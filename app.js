@@ -336,6 +336,7 @@ async function cargarAvisos() {
   try {
     const L = await rpcNuevo('biz_customers_full', 'biz_customers', { p_slug: slug, p_pin: pin });
     if (!document.getElementById('avisos')) return;
+    if (!L || !Array.isArray(L)) return;
     const listos = L.filter(c => c.stamps >= biz.stamps_needed).length;
     const day0 = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
     const hoy = L.filter(c => c.last_seen && new Date(c.last_seen) >= day0).length;
