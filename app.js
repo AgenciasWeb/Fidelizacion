@@ -621,8 +621,7 @@ async function walletView() {
   legalFooter();
   $app.innerHTML = `${bhero('Tus tarjetas', 'Mis tarjetas', 'Todas tus tarjetas de sellos en un solo lugar', '🎴')}<div id="w"></div>`;
   const w = document.getElementById('w'), list = savedCards();
-  const linkMenus = `<a class="btn alt" style="display:block;margin-top:12px" href="menus/">📍 Ver los menús de otros negocios</a>`;
-  if (!list.length) { w.innerHTML = `<div class="card"><p class="mute" style="margin:0">Todavía no tenés tarjetas en este celular. Acercá el celular a la tarjeta NFC de un negocio y creá la tuya.</p></div>${linkMenus}`; return; }
+  if (!list.length) { w.innerHTML = `<div class="card"><p class="mute" style="margin:0">Todavía no tenés tarjetas en este celular. Acercá el celular a la tarjeta NFC de un negocio y creá la tuya.</p></div>`; return; }
   w.innerHTML = '<p class="mute">Cargando…</p>';
   const rows = await Promise.all(list.map(async ([sl, code]) => {
     try {
@@ -636,7 +635,7 @@ async function walletView() {
     if (r.gone || r.err) card = `<div class="card" style="margin:0"><b>${esc(r.sl)}</b><p class="mute" style="margin:6px 0 0">${r.gone ? 'Esta tarjeta ya no existe.' : 'No se pudo cargar. Revisá tu conexión.'}</p></div>`;
     else {
       const col = hexOk(r.b.color) ? r.b.color : '#c2410c', col2 = hexOk(r.b.color2) ? r.b.color2 : col, left = r.b.stamps_needed - r.c.stamps;
-      card = `<a class="wcard" href="?b=${encodeURIComponent(r.sl)}" style="background:linear-gradient(135deg,${col},${col2});color:${textOn(mixHex(col, col2))}"><b>${esc(r.b.name)}</b><span>${r.c.stamps} de ${r.b.stamps_needed} sellos</span><small>${left <= 0 ? '¡Premio listo! ' : 'Te faltan ' + left + ' · '}${esc(r.b.reward_emoji || '🎁')} ${esc(r.b.reward)}</small></a>` + (r.b.menu_enabled ? `<a class="btn alt sm" style="display:block;margin:8px 0 0" href="?b=${encodeURIComponent(r.sl)}&menu=1">🍽️ Ver el menú de ${esc(r.b.name)}</a>` : '');
+      card = `<a class="wcard" href="?b=${encodeURIComponent(r.sl)}" style="background:linear-gradient(135deg,${col},${col2});color:${textOn(mixHex(col, col2))}"><b>${esc(r.b.name)}</b><span>${r.c.stamps} de ${r.b.stamps_needed} sellos</span><small>${left <= 0 ? '¡Premio listo! ' : 'Te faltan ' + left + ' · '}${esc(r.b.reward_emoji || '🎁')} ${esc(r.b.reward)}</small></a>`;
     }
     return card + `<div class="wrm"><button class="alt sm" data-rm="${esc(r.sl)}">Quitar de este celular</button></div>`;
   }).join('');
@@ -645,7 +644,6 @@ async function walletView() {
   });
   const ib = installHtml('card');
   if (ib) w.insertAdjacentHTML('beforeend', ib);
-  w.insertAdjacentHTML('beforeend', linkMenus);
 }
 
 async function listTab() {
@@ -1076,7 +1074,7 @@ async function menuView() {
         const nota = String(x.price_note || '').trim();
         const precio = nota ? esc(nota) : money.format(Number(x.price) || 0);
         const desc = String(x.description || '').trim();
-        return `<div class="mcard${x.available ? '' : ' sold'}" data-it="${esc(x.name)}" role="button" tabindex="0" aria-label="Ver ${esc(x.name)}"><div class="mcard-imgwrap">${ph ? `<img class="mcard-img" src="${esc(ph)}" alt="" loading="lazy" onerror="this.style.display='none'; if(this.nextElementSibling){this.nextElementSibling.style.display='grid';}">` : ''}<div class="mcard-ph" style="${ph ? 'display:none' : ''}">${em || '🍽️'}</div>${x.available && conPedidos ? `<button class="mcard-add" data-add="${esc(x.name)}" aria-label="Agregar ${esc(x.name)} al pedido">+</button>` : ''}</div><div class="mcard-body"><div class="mcard-top"><div class="mcard-name">${esc(x.name)}</div>${x.featured ? '<span class="fdest">⭐</span>' : ''}</div>${desc ? `<div class="mcard-desc">${esc(desc)}</div>` : ''}<div class="mcard-foot"><div class="mcard-price">${precio}</div>${x.available ? '' : '<span class="mcard-badge">Agotado</span>'}</div></div></div>`;
+        return `<div class="mcard${x.available ? '' : ' sold'}" data-it="${esc(x.name)}" role="button" tabindex="0" aria-label="Ver ${esc(x.name)}"><div class="mcard-imgwrap">${ph ? `<img class="mcard-img" src="${esc(ph)}" alt="" loading="lazy" onerror="this.style.display='none'; if(this.nextElementSibling){this.nextElementSibling.style.display='grid';}">` : ''}<div class="mcard-ph" style="${ph ? 'display:none' : ''}">${em || '🍽️'}</div></div><div class="mcard-body"><div class="mcard-top"><div class="mcard-name">${esc(x.name)}</div>${x.featured ? '<span class="fdest">⭐</span>' : ''}</div>${desc ? `<div class="mcard-desc">${esc(desc)}</div>` : ''}<div class="mcard-foot"><div class="mcard-price">${precio}</div>${x.available ? '' : '<span class="mcard-badge">Agotado</span>'}</div></div>${x.available && conPedidos ? `<button class="mcard-addbtn" data-add="${esc(x.name)}" type="button">Agregar al pedido</button>` : ''}</div>`;
       }).join('')}</div>`;
     }).join('');
     box.querySelectorAll('[data-it]').forEach(b => {
@@ -1092,6 +1090,7 @@ async function menuView() {
     box.querySelectorAll('[data-add]').forEach(btn => {
       btn.onclick = e => {
         e.stopPropagation();
+        e.preventDefault();
         const it = (data.items || []).find(x => x.name === btn.dataset.add);
         if (!it || !it.available) return;
         if (!conPedidos) return;
