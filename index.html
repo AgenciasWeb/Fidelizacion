@@ -89,13 +89,6 @@ details summary{cursor:pointer;color:var(--mute);font-size:14px;margin-top:8px}
 .mhead-ico{width:34px;height:34px;flex:none;display:grid;place-items:center;font-size:19px;background:var(--ac);border:1px solid rgba(255,255,255,.25);border-radius:11px;box-shadow:0 5px 12px -6px rgba(0,0,0,.7)}
 .mhead-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mhead-n{margin-left:auto;flex:none;font-size:12px;font-weight:700;color:var(--mute);background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
-/* ---- Menú público: cabecera con el color del negocio ---- */
-.mhero{position:relative;overflow:hidden;border-radius:18px;padding:22px 18px 20px;margin:0 0 14px;color:var(--ac-ink);box-shadow:0 14px 28px -16px rgba(0,0,0,.6);background-image:radial-gradient(circle at 88% 6%,rgba(255,255,255,.35),transparent 46%),radial-gradient(circle at 4% 96%,rgba(255,255,255,.25),transparent 44%),linear-gradient(135deg,var(--ac),var(--ac2))}
-.mhero::after{content:"";position:absolute;inset:0;background-image:radial-gradient(color-mix(in srgb,var(--ac-ink) 32%,transparent) 1.2px,transparent 1.3px);background-size:15px 15px;opacity:.4;pointer-events:none}
-.mhero-k{position:relative;z-index:1;margin:0 0 3px;font-size:12px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;opacity:.92}
-.mhero h1{position:relative;z-index:1;margin:0;color:var(--ac-ink);font-size:27px;line-height:1.15;text-shadow:0 1px 8px rgba(0,0,0,.18)}
-.mhero-u{position:relative;z-index:1;margin:9px 0 0;font-size:13px;opacity:.93}
-.mhero-ico{position:absolute;z-index:1;right:14px;top:14px;width:60px;height:60px;display:grid;place-items:center;font-size:33px;background:color-mix(in srgb,var(--ac-ink) 15%,transparent);border:1px solid color-mix(in srgb,var(--ac-ink) 35%,transparent);border-radius:50%}
 /* ---- Menú público: títulos de categoría ---- */
 .mhead{display:flex;align-items:center;gap:10px;margin:22px 0 10px;font-size:19px;font-weight:800;letter-spacing:-.01em;scroll-margin-top:64px}
 .mhead-ico{width:34px;height:34px;flex:none;display:grid;place-items:center;font-size:19px;background:var(--ac);border:1px solid rgba(255,255,255,.25);border-radius:11px;box-shadow:0 5px 12px -6px rgba(0,0,0,.7)}
@@ -153,16 +146,6 @@ details summary{cursor:pointer;color:var(--mute);font-size:14px;margin-top:8px}
 .mtxt{flex:1;min-width:0}
 .mtxt b{display:block;font-size:16px;line-height:1.3}
 .mqty{display:flex;align-items:center;gap:10px;justify-content:flex-end;margin:-4px 6px 12px 0}
-.mprice{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:4px;padding:7px 13px;border-radius:999px;background:var(--ac);color:var(--ac-ink);font-size:16px;font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums}
-.mrow.sold{opacity:.75}
-.mrow.sold .mtxt b{color:var(--mute)}
-.mrow.sold .mprice{background:var(--line);color:var(--mute)}
-.badge{display:inline-block;padding:2px 8px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em}
-@media (prefers-color-scheme:dark){.badge{background:#450a0a;color:#fca5a5)}
-.mrow{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:15px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
-.memoji{width:44px;height:44px;flex:none;display:grid;place-items:center;font-size:25px;background:var(--bg);border:1px solid var(--line);border-radius:12px}
-.mtxt{flex:1;min-width:0}
-.mtxt b{display:block;font-size:16px;line-height:1.3}
 .mprice{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:4px;padding:7px 13px;border-radius:999px;background:var(--ac);color:var(--ac-ink);font-size:16px;font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums}
 .mrow.sold{opacity:.75}
 .mrow.sold .mtxt b{color:var(--mute)}

@@ -334,7 +334,8 @@ async function cargarAvisos() {
   const box = document.getElementById('avisos');
   if (!box) return;
   try {
-    const L = await rpcNuevo('biz_customers_full', 'biz_customers', { p_slug: slug, p_pin: pin });
+    const Llist = await rpcNuevo('biz_customers_full', 'biz_customers', { p_slug: slug, p_pin: pin });
+    const L = Array.isArray(Llist) ? Llist : (Llist && Llist.message ? [] : (Array.isArray(Llist && Llist.data ? Llist.data : Llist) ? (Llist.data ? Llist.data : Llist) : []));
     if (!document.getElementById('avisos')) return;
     if (!L || !Array.isArray(L)) return;
     const listos = L.filter(c => c.stamps >= biz.stamps_needed).length;
@@ -772,8 +773,8 @@ function cfgTab() {
     /* El menú se prende o apaga desde acá. Al apagarlo, el servidor apaga
        también los pedidos (el pedido se arma en el menú). */
     const menuCambio = !!(c40 && c40.checked !== !!biz.menu_enabled);
-    if (c40) await paso('menu', () => rpc('biz_menu_toggle', { p_slug: slug, p_pin: pin, p_on: c40.checked }));
-    if (c30 && c40 && c40.checked) await paso('modulos', () => rpc('modulo_activar', { p_slug: slug, p_pin: pin, p_modulo: 'pedidos', p_activo: c30.checked }));
+    if (menuCambio && c40) await paso('menu', () => rpc('biz_menu_toggle', { p_slug: slug, p_pin: pin, p_on: c40.checked }));
+    if (c30 && c40 && c40.checked && !!(c30.checked !== !!(biz.modulos && biz.modulos.pedidos))) await paso('modulos', () => rpc('modulo_activar', { p_slug: slug, p_pin: pin, p_modulo: 'pedidos', p_activo: c30.checked }));
     const fallas = pasos.filter(p => p.startsWith('err:')).map(p => { const [n, m] = p.slice(4).split('|'); return (n === 'datos' ? 'los datos de la tarjeta' : n === 'contacto' ? 'los datos del negocio' : n === 'modulos' ? 'el módulo de pedidos' : n === 'menu' ? 'el menú digital' : 'el color de fondo') + ' (' + m + ')'; });
     if (fallas.length) {
       // Si falló el núcleo de la tarjeta, no se aplica nada en pantalla.
